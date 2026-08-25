@@ -7,6 +7,7 @@ public class HandleConnector : MonoBehaviour
     public static List<HandleConnector> allHandles = new List<HandleConnector>();
 
     public GameObject linePrefab;
+    public GameObject labelPrefab;
     public float snapDistance = 0.1f;
 
     private Camera cam;
@@ -28,26 +29,42 @@ public class HandleConnector : MonoBehaviour
 
     void OnMouseUp()
     {
-    if (currentLine == null) return;
+        if (currentLine == null) return;
 
-    HandleConnector closest = null;
+        HandleConnector closest = null;
 
-    Vector2 mousePos = Mouse.current.position.ReadValue();
-    Ray ray = cam.ScreenPointToRay(mousePos);
-    RaycastHit hit;
-    if (Physics.Raycast(ray, out hit, 100f))
-    {
-        HandleConnector hc = hit.collider.GetComponent<HandleConnector>();
-        if (hc != null && hc != this)
+        Vector2 mousePos = Mouse.current.position.ReadValue();
+        Ray ray = cam.ScreenPointToRay(mousePos);
+        RaycastHit hit;
+        if (Physics.Raycast(ray, out hit, 100f))
         {
-            closest = hc;
+            HandleConnector hc = hit.collider.GetComponent<HandleConnector>();
+            if (hc != null && hc != this)
+            {
+                closest = hc;
+            }
         }
-    }
 
-    if (closest != null) currentLine.pointB = closest.transform;
-    else Destroy(currentLineObj);
+        if (closest != null)
+        {
+            currentLine.pointB = closest.transform;
 
-    currentLineObj = null;
-    currentLine = null;
+            if (labelPrefab != null)
+            {
+                GameObject label = Instantiate(labelPrefab, currentLineObj.transform);
+                LineLabelFollow follow = label.GetComponent<LineLabelFollow>();
+                if (follow != null)
+                {
+                    follow.line = currentLineObj.GetComponent<LineRenderer>();
+                }
+            }
+        }
+        else
+        {
+            Destroy(currentLineObj);
+        }
+
+        currentLineObj = null;
+        currentLine = null;
     }
 }
