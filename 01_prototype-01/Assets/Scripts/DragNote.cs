@@ -11,9 +11,13 @@ public class DragNote : MonoBehaviour
 
     public Outline glowOutline;
 
-    void Start()
+    void Awake()
     {
         cam = Camera.main;
+    }
+
+    void Start()
+    {
         if (glowOutline != null) glowOutline.enabled = false;
     }
 
@@ -45,6 +49,13 @@ public class DragNote : MonoBehaviour
         {
             transform.position = GetMouseWorldPoint() + offset;
         }
+    }
+
+    public void ForceStartDrag()
+    {
+        dragging = true;
+        dragPlane = new Plane(-cam.transform.forward, transform.position);
+        offset = Vector3.zero;
     }
 
     Vector3 GetMouseWorldPoint()
