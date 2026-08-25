@@ -28,28 +28,26 @@ public class HandleConnector : MonoBehaviour
 
     void OnMouseUp()
     {
-        if (currentLine == null) return;
+    if (currentLine == null) return;
 
-        Vector2 mousePos = Mouse.current.position.ReadValue();
-        Ray ray = cam.ScreenPointToRay(mousePos);
-        Plane plane = new Plane(-cam.transform.forward, transform.position);
-        Vector3 releasePoint = transform.position;
-        float dist;
-        if (plane.Raycast(ray, out dist)) releasePoint = ray.GetPoint(dist);
+    HandleConnector closest = null;
 
-        HandleConnector closest = null;
-        float closestDist = snapDistance;
-        foreach (HandleConnector h in allHandles)
+    Vector2 mousePos = Mouse.current.position.ReadValue();
+    Ray ray = cam.ScreenPointToRay(mousePos);
+    RaycastHit hit;
+    if (Physics.Raycast(ray, out hit, 100f))
+    {
+        HandleConnector hc = hit.collider.GetComponent<HandleConnector>();
+        if (hc != null && hc != this)
         {
-            if (h == this) continue;
-            float d = Vector3.Distance(h.transform.position, releasePoint);
-            if (d < closestDist) { closestDist = d; closest = h; }
+            closest = hc;
         }
+    }
 
-        if (closest != null) currentLine.pointB = closest.transform;
-        else Destroy(currentLineObj);
+    if (closest != null) currentLine.pointB = closest.transform;
+    else Destroy(currentLineObj);
 
-        currentLineObj = null;
-        currentLine = null;
+    currentLineObj = null;
+    currentLine = null;
     }
 }
