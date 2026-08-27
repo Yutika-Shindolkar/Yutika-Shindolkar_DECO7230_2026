@@ -35,6 +35,7 @@ public class SpawnButton : MonoBehaviour
 
     void OnMouseDown()
     {
+        if (TourMode.IsTouring) return;
         if (DragNote.AnyDragging) return;
 
         Vector3 spawnPos = cam.position + cam.forward * spawnDistance;
