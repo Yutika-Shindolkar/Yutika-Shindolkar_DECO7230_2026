@@ -20,6 +20,8 @@ public class HandleConnector : MonoBehaviour
 
     void OnMouseDown()
     {
+        if (TourMode.IsTouring) return;
+
         currentLineObj = Instantiate(linePrefab);
         currentLine = currentLineObj.GetComponent<ConnectionLine>();
         currentLine.pointA = transform;
@@ -58,6 +60,8 @@ public class HandleConnector : MonoBehaviour
                     follow.line = currentLineObj.GetComponent<LineRenderer>();
                 }
             }
+
+            TourManager.RegisterConnection(transform.parent, closest.transform.parent);
         }
         else
         {

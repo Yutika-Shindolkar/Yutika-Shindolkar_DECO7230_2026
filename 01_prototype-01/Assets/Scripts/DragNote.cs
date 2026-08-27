@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.InputSystem;
+using TMPro;
 
 public class DragNote : MonoBehaviour
 {
@@ -14,6 +15,11 @@ public class DragNote : MonoBehaviour
 
     public Outline glowOutline;
     public float depthSpeed = 2f;
+
+    public TMP_Text noteText;
+
+    private Vector2 mouseDownScreenPos;
+    private bool allowClickToEdit = false;
 
     void Awake()
     {
@@ -37,11 +43,15 @@ public class DragNote : MonoBehaviour
 
     void OnMouseDown()
     {
+        if (TourMode.IsTouring) return;
+
         dragging = true;
         AnyDragging = true;
         dragDistance = Vector3.Distance(cam.transform.position, transform.position);
         dragPlane = new Plane(-cam.transform.forward, transform.position);
         offset = transform.position - GetMouseWorldPoint();
+        mouseDownScreenPos = Mouse.current.position.ReadValue();
+        allowClickToEdit = true;
     }
 
     void OnMouseUp()
@@ -60,6 +70,16 @@ public class DragNote : MonoBehaviour
                 return;
             }
         }
+
+        if (allowClickToEdit)
+        {
+            float moveDist = Vector2.Distance(mouseDownScreenPos, mousePos);
+            if (moveDist < 6f && NoteTextEditor.Instance != null && noteText != null)
+            {
+                NoteTextEditor.Instance.OpenFor(noteText, transform.position);
+            }
+        }
+        allowClickToEdit = false;
     }
 
     void Update()
