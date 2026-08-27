@@ -169,7 +169,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::HandleConnector
   linePrefab: {fileID: 4607941797585594664, guid: de73f13228061694ab6f0598f85df529, type: 3}
-  labelPrefab: {fileID: 0}
+  labelPrefab: {fileID: 8183869674061244655, guid: 26903734ca753a941a35fb1bb8956f20, type: 3}
   snapDistance: 0.1
 --- !u!1 &2409553017937966851
 GameObject:
@@ -552,7 +552,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::HandleConnector
   linePrefab: {fileID: 4607941797585594664, guid: de73f13228061694ab6f0598f85df529, type: 3}
-  labelPrefab: {fileID: 0}
+  labelPrefab: {fileID: 8183869674061244655, guid: 26903734ca753a941a35fb1bb8956f20, type: 3}
   snapDistance: 0.1
 --- !u!1 &6979845625025658717
 GameObject:
@@ -686,7 +686,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::HandleConnector
   linePrefab: {fileID: 4607941797585594664, guid: de73f13228061694ab6f0598f85df529, type: 3}
-  labelPrefab: {fileID: 0}
+  labelPrefab: {fileID: 8183869674061244655, guid: 26903734ca753a941a35fb1bb8956f20, type: 3}
   snapDistance: 0.1
 --- !u!1 &7658311857650491456
 GameObject:
@@ -780,7 +780,7 @@ MonoBehaviour:
   m_FallbackScreenDPI: 96
   m_DefaultSpriteDPI: 96
   m_DynamicPixelsPerUnit: 1
-  m_PresetInfoIsWorld: 0
+  m_PresetInfoIsWorld: 1
 --- !u!114 &1434464920540147971
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -974,5 +974,5 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::HandleConnector
   linePrefab: {fileID: 4607941797585594664, guid: de73f13228061694ab6f0598f85df529, type: 3}
-  labelPrefab: {fileID: 0}
+  labelPrefab: {fileID: 8183869674061244655, guid: 26903734ca753a941a35fb1bb8956f20, type: 3}
   snapDistance: 0.1
