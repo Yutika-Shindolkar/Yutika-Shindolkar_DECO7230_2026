@@ -57,6 +57,64 @@ public static class IP2aSceneBuilder
         Debug.Log("IP2aSceneBuilder: XR Origin (XR Rig) is now at the scene root, position (0,0,0), no rotation.");
     }
 
+    // Diagnostic: run this in Play mode (panel open, mic mounted) to find out exactly
+    // why the mic FBX doesn't render in Game view. Logs world positions, viewport
+    // coordinates (from Camera.main), and Renderer.isVisible for the mic mesh vs the
+    // MicBase placeholder, so we can tell frustum-culling / occlusion apart from a
+    // material or draw-order problem instead of guessing.
+    [MenuItem("Tools/IP2a/Debug Mic Visibility")]
+    public static void DebugMicVisibility()
+    {
+        if (!Application.isPlaying)
+        {
+            Debug.LogWarning("IP2aSceneBuilder: Debug Mic Visibility only works in Play mode (open the note panel first).");
+            return;
+        }
+
+        Camera cam = Camera.main;
+        if (cam == null)
+        {
+            Debug.LogError("IP2aSceneBuilder: Camera.main is null.");
+            return;
+        }
+
+        GameObject cyl = GameObject.Find("Cylinder003");
+        GameObject micBase = GameObject.Find("MicBase");
+        GameObject micFbxGO = cyl != null ? cyl.transform.parent.gameObject : null;
+
+        Debug.Log($"IP2aSceneBuilder: Camera.main = '{cam.name}', world pos {cam.transform.position}, forward {cam.transform.forward}, nearClip {cam.nearClipPlane}, farClip {cam.farClipPlane}");
+
+        if (cyl != null)
+        {
+            Vector3 worldPos = cyl.transform.position;
+            Vector3 viewport = cam.WorldToViewportPoint(worldPos);
+            Renderer r = cyl.GetComponent<Renderer>();
+            Debug.Log($"IP2aSceneBuilder: Cylinder003 world pos {worldPos}, viewport coords {viewport} (0..1,0..1 on-screen, z>0 in front of camera), Renderer.isVisible={r?.isVisible}, Renderer.enabled={r?.enabled}, bounds.center={r?.bounds.center}, bounds.size={r?.bounds.size}");
+        }
+        else
+        {
+            Debug.LogError("IP2aSceneBuilder: could not find 'Cylinder003' in the scene (is the panel open?).");
+        }
+
+        if (micFbxGO != null)
+        {
+            Vector3 viewport = cam.WorldToViewportPoint(micFbxGO.transform.position);
+            Debug.Log($"IP2aSceneBuilder: mic,fbx world pos {micFbxGO.transform.position}, viewport coords {viewport}");
+        }
+
+        if (micBase != null)
+        {
+            Vector3 worldPos = micBase.transform.position;
+            Vector3 viewport = cam.WorldToViewportPoint(worldPos);
+            Renderer r = micBase.GetComponent<Renderer>();
+            Debug.Log($"IP2aSceneBuilder: MicBase world pos {worldPos}, viewport coords {viewport}, Renderer.isVisible={r?.isVisible}, Renderer.enabled={r?.enabled}");
+        }
+        else
+        {
+            Debug.LogError("IP2aSceneBuilder: could not find 'MicBase' in the scene.");
+        }
+    }
+
     [MenuItem("Tools/IP2a/Build Clap-To-Panel Flow")]
     public static void Build()
     {
@@ -91,6 +149,9 @@ public static class IP2aSceneBuilder
         GameObject[] notePrefabs = new GameObject[5];
         for (int i = 0; i < 5; i++)
             notePrefabs[i] = BuildNotePrefab(shapeNames[i], shapeColors[i], (NoteShape)i, handleLayer, linePrefab, labelPrefab);
+
+        // --- Delete (foot-level trash bin) ---
+        BuildTrashBin(rig);
 
         // --- Prompt note ---
         GameObject promptNoteGO = FindOrCreate("PromptNote");
@@ -195,7 +256,7 @@ public static class IP2aSceneBuilder
             TextMeshPro labelText = label.GetComponent<TextMeshPro>();
             if (labelText == null) labelText = label.AddComponent<TextMeshPro>();
             labelText.text = shapeNames[i];
-            labelText.fontSize = 3.5f;
+            labelText.fontSize = 6f; // was 3.5 - too small to read clearly regardless of colour
             labelText.alignment = TextAlignmentOptions.Center;
             labelText.color = new Color(0.15f, 0.15f, 0.15f);
             label.transform.localPosition = new Vector3(0, -shapeSize * 0.85f, -0.02f);
@@ -203,6 +264,13 @@ public static class IP2aSceneBuilder
 
             RemovePersistentListeners(interactable.selectEntered);
             UnityEventTools.AddIntPersistentListener(interactable.selectEntered, panel.SetPendingShape, i);
+
+            // Hover-only glow, independent of the click/select state above, so the shapes
+            // read as clickable before you actually pick one.
+            RemovePersistentListeners(interactable.hoverEntered);
+            UnityEventTools.AddIntPersistentListener(interactable.hoverEntered, panel.SetHoverShape, i);
+            RemovePersistentListeners(interactable.hoverExited);
+            UnityEventTools.AddIntPersistentListener(interactable.hoverExited, panel.ClearHoverShape, i);
         }
 
         // Note text field - tinted by NoteCreationPanel at runtime to match the picked shape.
@@ -210,10 +278,13 @@ public static class IP2aSceneBuilder
             new Vector3(0, textFieldY, -0.018f), new Vector2(textFieldWidth, textFieldHeight),
             new Color(245f / 255f, 245f / 255f, 245f / 255f));
 
-        // Add Image / Add Video / Add Document - static for now (no collider), per your
-        // instruction to keep them non-interactive until functionality is wired up later.
-        // NoteCreationPanel re-tints these active/inactive based on the selected shape.
+        // Add Image / Add Video / Add Document - clickable, but NoteCreationPanel only
+        // enables their XRSimpleInteractable once Rectangle is the picked shape (and
+        // re-tints them active/inactive/selected to match). mediaTypeValues here is the
+        // MediaType enum's int value for each slot (Image=1, Video=3, Document=2 - NOT the
+        // row position 0/1/2), since that's what NoteCreationPanel.SetPendingMedia expects.
         string[] mediaLabels = { "Add Image", "Add Video", "Add Document" };
+        int[] mediaTypeValues = { (int)MediaType.Image, (int)MediaType.Video, (int)MediaType.Document };
         float[] mediaX = { -0.205f, 0f, 0.205f };
         GameObject[] mediaButtonGOs = new GameObject[3];
         for (int i = 0; i < 3; i++)
@@ -221,17 +292,21 @@ public static class IP2aSceneBuilder
             string key = mediaLabels[i].Replace(" ", "") + "Button";
             GameObject btn = FindOrCreateChild(panelGO.transform, key);
             SetupRoundedRect(btn, mediaButtonWidth, mediaButtonHeight, mediaButtonRadius,
-                0.012f, new Color(0.65f, 0.65f, 0.65f), key);
+                0.012f, new Color(0.82f, 0.82f, 0.82f), key);
             btn.transform.localPosition = new Vector3(mediaX[i], mediaRowY, -0.02f);
-            RemoveCollider(btn);
+
+            XRSimpleInteractable mediaInteractable = btn.GetComponent<XRSimpleInteractable>();
+            if (mediaInteractable == null) mediaInteractable = btn.AddComponent<XRSimpleInteractable>();
+            RemovePersistentListeners(mediaInteractable.selectEntered);
+            UnityEventTools.AddIntPersistentListener(mediaInteractable.selectEntered, panel.SetPendingMedia, mediaTypeValues[i]);
 
             GameObject label = FindOrCreateChild(btn.transform, "Label");
             TextMeshPro labelText = label.GetComponent<TextMeshPro>();
             if (labelText == null) labelText = label.AddComponent<TextMeshPro>();
             labelText.text = mediaLabels[i];
-            labelText.fontSize = 3.2f;
+            labelText.fontSize = 6f; // was 3.2 - same fix as the shape labels
             labelText.alignment = TextAlignmentOptions.Center;
-            labelText.color = new Color(0.5f, 0.5f, 0.5f);
+            labelText.color = new Color(0.15f, 0.15f, 0.15f); // was 0.5 (too light) - matches the shape labels' contrast
             label.transform.localPosition = new Vector3(0, 0, -0.01f);
             label.transform.localScale = Vector3.one * 0.03f;
 
@@ -345,8 +420,9 @@ public static class IP2aSceneBuilder
         GameObject note = new GameObject(shapeName + "Note");
         note.tag = "Note";
 
-        float noteSize = 0.16f;
+        float noteSize = 0.22f; // was 0.16 - bigger shape gives the shape-aware text box below more room
         Vector2[] outline = GetShapeOutline(shape, noteSize);
+        GetTextSafeRect(shape, noteSize, out float safeWidth, out float safeHeight, out float safeCenterY);
 
         Rigidbody rb = note.AddComponent<Rigidbody>();
         rb.useGravity = false;
@@ -365,32 +441,36 @@ public static class IP2aSceneBuilder
         col.center = visualCol.center;
         Object.DestroyImmediate(visualCol);
 
-        // World-space canvas for text + media thumbnail (NoteData needs uGUI components for these)
+        // World-space canvas for text + media thumbnail (NoteData needs uGUI components for these).
+        // The canvas is now sized to the shape-aware "safe rect" itself (GetTextSafeRect,
+        // computed above from the same geometry as GetShapeOutline/RegularPolygon) instead
+        // of a fixed 150x100 box with a uniform inset - a uniform inset worked fine for
+        // Rectangle/Circle but let text spill past Triangle's/Star's pointed edges.
         GameObject canvasGO = new GameObject("Canvas");
         canvasGO.transform.SetParent(note.transform, false);
         Canvas canvas = canvasGO.AddComponent<Canvas>();
         canvas.renderMode = RenderMode.WorldSpace;
         RectTransform canvasRect = canvasGO.GetComponent<RectTransform>();
-        canvasRect.sizeDelta = new Vector2(150, 100);
-        canvasGO.transform.localScale = Vector3.one * 0.001f;
-        canvasGO.transform.localPosition = new Vector3(0, 0, -0.021f);
+        canvasRect.sizeDelta = new Vector2(safeWidth / TextCanvasScale, safeHeight / TextCanvasScale);
+        canvasGO.transform.localScale = Vector3.one * TextCanvasScale;
+        canvasGO.transform.localPosition = new Vector3(0, safeCenterY, -0.021f);
         canvasGO.AddComponent<CanvasRenderer>();
 
         GameObject textGO = new GameObject("NoteText");
         textGO.transform.SetParent(canvasGO.transform, false);
         TextMeshProUGUI text = textGO.AddComponent<TextMeshProUGUI>();
         text.text = shapeName;
-        text.fontSize = 24;
+        text.fontSize = 20;
         text.alignment = TextAlignmentOptions.Center;
         text.color = Color.black;
         // Shrinks/grows to fit whatever the user types into the note's shape.
         text.enableAutoSizing = true;
-        text.fontSizeMin = 8;
-        text.fontSizeMax = 24;
+        text.fontSizeMin = 6;
+        text.fontSizeMax = 20; // was 24 - biased smaller so more text fits comfortably
         RectTransform textRect = textGO.GetComponent<RectTransform>();
-        // Inset from the shape's own outline so text doesn't run into curved/pointed edges.
-        textRect.anchorMin = new Vector2(0.15f, 0.15f);
-        textRect.anchorMax = new Vector2(0.85f, 0.85f);
+        // The canvas itself IS the safe rect now, so the text just fills it edge to edge.
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
         textRect.sizeDelta = Vector2.zero;
 
         GameObject thumbGO = new GameObject("MediaThumbnail");
@@ -407,7 +487,11 @@ public static class IP2aSceneBuilder
         data.noteText = text;
         data.mediaThumbnail = thumb;
 
-        note.AddComponent<XRGrabInteractable>();
+        XRGrabInteractable grab = note.AddComponent<XRGrabInteractable>();
+        // A note should stay exactly where you let go of it, not keep sailing across the
+        // room on your hand's release velocity - that's a distraction for a whiteboard
+        // note and makes the trash-bin drop (below) unreliable to aim.
+        grab.throwOnDetach = false;
         note.AddComponent<NoteTrashHandler>();
 
         // Handle child for connecting notes together
@@ -546,6 +630,10 @@ public static class IP2aSceneBuilder
             // the user at identity rotation, this turns it around to face correctly.
             micVisual.transform.localRotation = Quaternion.Euler(0f, -180f, 0f);
             micVisual.transform.localScale = Vector3.one * 0.35f;
+            // The FBX's mesh pivot isn't centred on this transform (see the bounds-based
+            // recentring further down, after Object009 is shortened) - micVisualOffset above
+            // stays a manual nudge you can still use on top of that if the auto-centring
+            // isn't perfect once you see it.
 
             // The mic model has its own built-in boom-arm piece, "Object009" in the FBX -
             // it was reaching way further than intended. You asked for its actual length
@@ -604,6 +692,33 @@ public static class IP2aSceneBuilder
             {
                 Debug.LogWarning("IP2aSceneBuilder: couldn't find a child named 'Object009' under the mic model - can't shorten its arm piece. Check the exact name in the Hierarchy.");
             }
+
+            // Root-caused via Tools > IP2a > Debug Mic Visibility in Play mode: the FBX's
+            // sub-meshes (Cylinder003 etc.) don't just have an off-pivot origin, they render
+            // ~0.7m away from micVisual's own transform (confirmed: Cylinder003 was at
+            // viewport x=1.28, off the right edge of the screen, Renderer.isVisible=false,
+            // while micVisual's own pivot sat at a perfectly reasonable viewport x=0.65).
+            // That's why the model was invisible in Game view but looked fine in the Scene
+            // view when framed directly on it - Frame Selected jumps the camera to wherever
+            // the geometry actually is, wherever that is.
+            // The earlier Renderer.bounds auto-centring attempt wasn't wrong in kind, it was
+            // just done before the Object009 mesh edit above and left uncomputed correctly -
+            // this repeats it now, after the mesh is in its final shape, and applies the
+            // correction as a world-space Transform.position delta (never touching
+            // localScale, so it can't corrupt any child's local transform the way scaling a
+            // parent can).
+            Renderer[] micRenderers = micVisual.GetComponentsInChildren<Renderer>();
+            if (micRenderers.Length > 0)
+            {
+                Bounds combined = micRenderers[0].bounds;
+                for (int i = 1; i < micRenderers.Length; i++) combined.Encapsulate(micRenderers[i].bounds);
+                Vector3 worldDelta = headGO.transform.position - combined.center;
+                micVisual.transform.position += worldDelta;
+                Debug.Log($"IP2aSceneBuilder: recentred mic model by world offset {worldDelta} (combined mesh bounds " +
+                    $"were centred at {combined.center}, size {combined.size}, MicHead is at {headGO.transform.position}). " +
+                    "Run Tools > IP2a > Debug Mic Visibility again in Play mode to confirm Renderer.isVisible=True and " +
+                    "viewport coords are inside 0..1 now.");
+            }
         }
         else
         {
@@ -632,6 +747,27 @@ public static class IP2aSceneBuilder
         boom.maxDistance = armLength;
     }
 
+    // Foot-level trash bin for the delete gesture (FootTrashBin.cs / NoteTrashHandler.cs,
+    // both already in Assets/Scripts - this is just the missing piece, the GameObject
+    // itself was never built into the scene). A flat rectangle standing in for the real
+    // dustbin model Yutika will bring in later: FootTrashBin only reads this object's own
+    // Renderer/Collider/Transform, so swapping the visual later (new mesh, same
+    // GameObject and components) won't need any script changes.
+    static void BuildTrashBin(GameObject rig)
+    {
+        GameObject bin = FindOrCreate("FootTrashBin");
+        SetupFlatShape(bin, RectOutline(0.35f, 0.35f), 0.02f, new Color(0.75f, 0.35f, 0.35f), "FootTrashBin");
+        // Starting position only - FootTrashBin.Update() re-tracks the rig's position every
+        // frame itself once a note is picked up, this is just where it sits at edit time.
+        bin.transform.position = rig.transform.position;
+        bin.transform.rotation = Quaternion.identity;
+
+        FootTrashBin trashBin = bin.GetComponent<FootTrashBin>();
+        if (trashBin == null) trashBin = bin.AddComponent<FootTrashBin>();
+        trashBin.playerRoot = rig.transform; // XR Origin's own root = floor-level position (Tracking Origin Mode: Floor)
+        trashBin.footOffsetY = 0.01f; // just proud of the floor plane, avoids z-fighting
+    }
+
     // ---------- Shape outlines ----------
 
     static Vector2[] GetShapeOutline(NoteShape shape, float size)
@@ -644,6 +780,66 @@ public static class IP2aSceneBuilder
             case NoteShape.Hexagon: return RegularPolygon(size * 0.5f, 6, 0f);
             case NoteShape.Star: return StarOutline(size * 0.55f, size * 0.22f, 5);
             default: return RectOutline(size, size);
+        }
+    }
+
+    // The largest safe rectangle (in the same local units as `size`) that a note's text can
+    // occupy without spilling past that shape's own edges. A single uniform inset (the old
+    // approach) works fine for Rectangle/Circle, since those are convex and roughly
+    // square-ish, but badly under- or over-shoots for Triangle (tapers to a point),
+    // Hexagon (tapers less, but still not square) and Star (concave - most of its outer
+    // radius is unusable). Each case below is derived from the exact same geometry
+    // GetShapeOutline uses (RegularPolygon's circumradius etc.), not guessed.
+    static void GetTextSafeRect(NoteShape shape, float size, out float width, out float height, out float centerY)
+    {
+        const float margin = 0.85f; // shrink the geometrically-exact inscribed rect a bit for breathing room
+        switch (shape)
+        {
+            case NoteShape.Circle:
+            {
+                // Largest square inscribed in a circle of this radius has side = radius*sqrt(2).
+                float side = size * 0.5f * 1.41421356f * margin;
+                width = side; height = side; centerY = 0f;
+                break;
+            }
+            case NoteShape.Triangle:
+            {
+                // Apex-up equilateral triangle (GetShapeOutline uses RegularPolygon(size*0.55, 3, 90)).
+                // The largest axis-aligned rect that fits sits on the base, centred, spanning
+                // the bottom half of the triangle's height at half the base's width.
+                float r = size * 0.55f; // circumradius, matches GetShapeOutline
+                float baseWidth = r * 1.73205081f; // 2 * r * cos(30deg)
+                float fullHeight = r * 1.5f;       // apex to base
+                float safeH = fullHeight * 0.5f;
+                width = baseWidth * 0.5f * margin;
+                height = safeH * margin;
+                float baseY = -r * 0.5f;
+                centerY = baseY + safeH * 0.5f; // sits on the base, not centred on the triangle's centroid
+                break;
+            }
+            case NoteShape.Hexagon:
+            {
+                // Flat-top/flat-bottom hexagon (GetShapeOutline uses RegularPolygon(size*0.5, 6, 0)).
+                // A rect as wide as the flat top/bottom edge fits the full point-to-point height.
+                float r = size * 0.5f;
+                width = r * margin;
+                height = r * 1.73205081f * margin; // 2 * r * sin(60deg)
+                centerY = 0f;
+                break;
+            }
+            case NoteShape.Star:
+            {
+                // Concave - stay safely inside the inner radius rather than try to use the points.
+                float side = size * 0.22f * 1.41421356f * margin;
+                width = side; height = side; centerY = 0f;
+                break;
+            }
+            case NoteShape.Rectangle:
+            default:
+                width = size * margin;
+                height = size * 0.7f * margin;
+                centerY = 0f;
+                break;
         }
     }
 

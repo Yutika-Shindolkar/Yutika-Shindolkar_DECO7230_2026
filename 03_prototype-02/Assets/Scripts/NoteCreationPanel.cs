@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using UnityEngine.XR.Interaction.Toolkit.Interactables;
 
 // World-space panel that appears after a clap. Lets the user pick a shape, type a
 // short note, and an optional placeholder media attachment, then Discard or Create.
@@ -16,8 +17,8 @@ public class NoteCreationPanel : MonoBehaviour
     public GameObject[] shapePrefabs;    // Rectangle, Circle, Triangle, Hexagon, Star
 
     [Header("Shape picker visuals, indexed to match shapePrefabs")]
-    public Transform[] shapeButtons;     // each shape button's root transform (scaled up when selected)
-    public GameObject[] shapeGlowRings;  // each shape button's glow child (shown when selected)
+    public Transform[] shapeButtons;     // each shape button's root transform (scaled up when selected/hovered)
+    public GameObject[] shapeGlowRings;  // each shape button's glow child (shown on hover AND selection)
     public Color[] shapeColors;          // same colors as the buttons - used to tint the text field
 
     [Header("Note text input")]
@@ -27,18 +28,28 @@ public class NoteCreationPanel : MonoBehaviour
     // stay readable against this near-white default AND every shape colour, which are
     // all light pastels - see BuildTextInputField in IP2aSceneBuilder.cs.
 
-    [Header("Media attachment buttons - visual only for now, wired up later")]
+    [Header("Media attachment buttons - only clickable once Rectangle is the picked shape")]
     public GameObject[] mediaButtons;    // Add Image, Add Video, Add Document
-    public Color mediaActiveColor = new Color(0.15f, 0.15f, 0.15f);
-    public Color mediaInactiveColor = new Color(0.65f, 0.65f, 0.65f);
+    public Color mediaActiveColor = new Color(0.15f, 0.15f, 0.15f);   // label, active + not the chosen one
+    public Color mediaInactiveColor = new Color(0.65f, 0.65f, 0.65f); // label, not clickable yet
+    public Color mediaSelectedColor = Color.white;                     // label, this is the chosen media type
+    public Color mediaBgInactive = new Color(0.82f, 0.82f, 0.82f);
+    public Color mediaBgActive = new Color(0.92f, 0.92f, 0.92f);
+    public Color mediaBgSelected = new Color(0.90f, 0.55f, 0.45f); // matches the Rectangle shape's own accent
 
     [Header("Placeholder media sprites")]
     public Sprite imagePlaceholder;
     public Sprite documentPlaceholder;
     public Sprite videoPlaceholder;
 
+    // mediaButtons[] order is Add Image / Add Video / Add Document (see IP2aSceneBuilder) -
+    // this is the matching MediaType for each slot, used to test/set "is this one chosen".
+    static readonly MediaType[] MediaOrder = { MediaType.Image, MediaType.Video, MediaType.Document };
+
     NoteShape pendingShape = NoteShape.Rectangle;
     MediaType pendingMedia = MediaType.None;
+    int selectedShapeIndex = -1;
+    int hoveredShapeIndex = -1;
 
     void Awake()
     {
@@ -51,6 +62,7 @@ public class NoteCreationPanel : MonoBehaviour
 
         pendingShape = NoteShape.Rectangle;
         pendingMedia = MediaType.None;
+        hoveredShapeIndex = -1;
         HighlightShape(-1); // nothing glows and the field is the default grey until a shape is picked
         if (noteTextField != null) noteTextField.text = "";
 
@@ -73,24 +85,50 @@ public class NoteCreationPanel : MonoBehaviour
         ClosePanel();
     }
 
-    // Wire these to the shape buttons' selectEntered, one integer per button (0=Rectangle...4=Star)
+    // Wired to each shape button's selectEntered, one integer per button (0=Rectangle...4=Star).
     public void SetPendingShape(int shapeIndex)
     {
         pendingShape = (NoteShape)shapeIndex;
         HighlightShape(shapeIndex);
     }
 
+    // Wired to each shape button's hoverEntered/hoverExited, so the shapes glow under the
+    // pointer even before you click one - the click (select) state below still wins if a
+    // shape is already picked, hover on top of it doesn't un-pick anything.
+    public void SetHoverShape(int shapeIndex)
+    {
+        hoveredShapeIndex = shapeIndex;
+        RefreshShapeVisuals();
+    }
+
+    public void ClearHoverShape(int shapeIndex)
+    {
+        if (hoveredShapeIndex == shapeIndex) hoveredShapeIndex = -1;
+        RefreshShapeVisuals();
+    }
+
     void HighlightShape(int selectedIndex)
+    {
+        selectedShapeIndex = selectedIndex;
+        // Media only makes sense on a Rectangle note in this design - switching to any
+        // other shape (or back to nothing picked) drops whatever media was chosen so the
+        // buttons' inactive look always matches what's actually going to be created.
+        if (selectedShapeIndex != (int)NoteShape.Rectangle) pendingMedia = MediaType.None;
+        RefreshShapeVisuals();
+    }
+
+    void RefreshShapeVisuals()
     {
         if (shapeButtons != null)
         {
             for (int i = 0; i < shapeButtons.Length; i++)
             {
-                bool selected = i == selectedIndex;
+                bool selected = i == selectedShapeIndex;
+                bool hovered = i == hoveredShapeIndex;
                 if (shapeButtons[i] != null)
-                    shapeButtons[i].localScale = Vector3.one * (selected ? 1.18f : 1f);
+                    shapeButtons[i].localScale = Vector3.one * (selected ? 1.18f : hovered ? 1.08f : 1f);
                 if (shapeGlowRings != null && i < shapeGlowRings.Length && shapeGlowRings[i] != null)
-                    shapeGlowRings[i].SetActive(selected);
+                    shapeGlowRings[i].SetActive(selected || hovered);
             }
         }
 
@@ -98,33 +136,50 @@ public class NoteCreationPanel : MonoBehaviour
         if (noteTextField != null && noteTextField.targetGraphic != null)
         {
             Color fieldColor = defaultFieldColor;
-            if (selectedIndex >= 0 && shapeColors != null && selectedIndex < shapeColors.Length)
-                fieldColor = shapeColors[selectedIndex];
+            if (selectedShapeIndex >= 0 && shapeColors != null && selectedShapeIndex < shapeColors.Length)
+                fieldColor = shapeColors[selectedShapeIndex];
             noteTextField.targetGraphic.color = fieldColor;
         }
 
-        // Add Image / Add Video / Add Document only look active for Rectangle notes.
-        UpdateMediaButtonsState(selectedIndex == (int)NoteShape.Rectangle);
+        // Add Image / Add Video / Add Document only become clickable for Rectangle notes.
+        RefreshMediaVisuals(selectedShapeIndex == (int)NoteShape.Rectangle);
     }
 
-    void UpdateMediaButtonsState(bool active)
+    void RefreshMediaVisuals(bool active)
     {
         if (mediaButtons == null) return;
-        Color tint = active ? mediaActiveColor : mediaInactiveColor;
-        foreach (GameObject btn in mediaButtons)
+        for (int i = 0; i < mediaButtons.Length; i++)
         {
+            GameObject btn = mediaButtons[i];
             if (btn == null) continue;
-            Renderer r = btn.GetComponentInChildren<Renderer>();
-            if (r != null) r.material.color = tint; // .material (not sharedMaterial) auto-instances so buttons don't tint each other
+
+            bool selected = active && i < MediaOrder.Length && pendingMedia == MediaOrder[i];
+
+            // The button root itself carries the background mesh's Renderer (see
+            // SetupRoundedRect/SetupFlatShape) - GetComponent, not GetComponentInChildren,
+            // so this never picks up the Label's own text-mesh renderer by accident.
+            Renderer r = btn.GetComponent<Renderer>();
+            if (r != null) r.material.color = selected ? mediaBgSelected : (active ? mediaBgActive : mediaBgInactive);
+
             TMP_Text label = btn.GetComponentInChildren<TMP_Text>();
-            if (label != null) label.color = tint;
+            if (label != null) label.color = selected ? mediaSelectedColor : (active ? mediaActiveColor : mediaInactiveColor);
+
+            // Only actually interactable once a Rectangle is picked - not just tinted to
+            // look that way, so it can't be poked/rayed while "inactive".
+            XRSimpleInteractable interactable = btn.GetComponent<XRSimpleInteractable>();
+            if (interactable != null) interactable.enabled = active;
         }
     }
 
-    // Wire these to the media buttons' interaction once they're made clickable (0=None,1=Image,2=Document,3=Video)
+    // Wired to each media button's selectEntered (1=Image, 3=Video, 2=Document - the
+    // MediaType int values, not the button's row position). Click the already-chosen one
+    // again to clear it, like a radio group that allows "none".
     public void SetPendingMedia(int mediaIndex)
     {
-        pendingMedia = (MediaType)mediaIndex;
+        if (selectedShapeIndex != (int)NoteShape.Rectangle) return; // belt and braces - the collider should already be disabled
+        MediaType newMedia = (MediaType)mediaIndex;
+        pendingMedia = (pendingMedia == newMedia) ? MediaType.None : newMedia;
+        RefreshMediaVisuals(true);
     }
 
     // Wired to the green "Create" button.

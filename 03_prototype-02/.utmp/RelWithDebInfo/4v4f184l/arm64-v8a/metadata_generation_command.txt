@@ -1,0 +1,21 @@
+                        -HN:\GitHub Desktop\Yutika-Shindolkar_DECO7230_2026\03_prototype-02\Library\Bee\Android\Prj\IL2CPP\Gradle\unityLibrary\src\main\cpp
+-DCMAKE_SYSTEM_NAME=Android
+-DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+-DCMAKE_SYSTEM_VERSION=32
+-DANDROID_PLATFORM=android-32
+-DANDROID_ABI=arm64-v8a
+-DCMAKE_ANDROID_ARCH_ABI=arm64-v8a
+-DANDROID_NDK=N:\unity intalls\6000.3.24f1\Editor\Data\PlaybackEngines\AndroidPlayer\NDK
+-DCMAKE_ANDROID_NDK=N:\unity intalls\6000.3.24f1\Editor\Data\PlaybackEngines\AndroidPlayer\NDK
+-DCMAKE_TOOLCHAIN_FILE=N:\unity intalls\6000.3.24f1\Editor\Data\PlaybackEngines\AndroidPlayer\NDK\build\cmake\android.toolchain.cmake
+-DCMAKE_MAKE_PROGRAM=N:\unity intalls\6000.3.24f1\Editor\Data\PlaybackEngines\AndroidPlayer\SDK\cmake\3.22.1\bin\ninja.exe
+-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=N:\GitHub Desktop\Yutika-Shindolkar_DECO7230_2026\03_prototype-02\Library\Bee\Android\Prj\IL2CPP\Gradle\unityLibrary\build\intermediates\cxx\RelWithDebInfo\4v4f184l\obj\arm64-v8a
+-DCMAKE_RUNTIME_OUTPUT_DIRECTORY=N:\GitHub Desktop\Yutika-Shindolkar_DECO7230_2026\03_prototype-02\Library\Bee\Android\Prj\IL2CPP\Gradle\unityLibrary\build\intermediates\cxx\RelWithDebInfo\4v4f184l\obj\arm64-v8a
+-DCMAKE_BUILD_TYPE=RelWithDebInfo
+-DCMAKE_FIND_ROOT_PATH=N:\GitHub Desktop\Yutika-Shindolkar_DECO7230_2026\03_prototype-02\.utmp\RelWithDebInfo\4v4f184l\prefab\arm64-v8a\prefab
+-BN:\GitHub Desktop\Yutika-Shindolkar_DECO7230_2026\03_prototype-02\.utmp\RelWithDebInfo\4v4f184l\arm64-v8a
+-GNinja
+-DANDROID_STL=c++_shared
+-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON
+                        Build command args: []
+                        Version: 2

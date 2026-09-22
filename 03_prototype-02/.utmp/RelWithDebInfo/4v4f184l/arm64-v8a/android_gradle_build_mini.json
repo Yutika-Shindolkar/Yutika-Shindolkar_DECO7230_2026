@@ -1,0 +1,35 @@
+{
+  "buildFiles": [
+    "N:\\GitHub Desktop\\Yutika-Shindolkar_DECO7230_2026\\03_prototype-02\\Library\\Bee\\Android\\Prj\\IL2CPP\\Gradle\\unityLibrary\\src\\main\\cpp\\CMakeLists.txt",
+    "N:\\GitHub Desktop\\Yutika-Shindolkar_DECO7230_2026\\03_prototype-02\\Library\\Bee\\Android\\Prj\\IL2CPP\\Gradle\\unityLibrary\\src\\main\\cpp\\FramePacing\\CMakeLists.txt",
+    "N:\\GitHub Desktop\\Yutika-Shindolkar_DECO7230_2026\\03_prototype-02\\Library\\Bee\\Android\\Prj\\IL2CPP\\Gradle\\unityLibrary\\src\\main\\cpp\\GameActivity\\CMakeLists.txt"
+  ],
+  "cleanCommandsComponents": [
+    [
+      "N:\\unity intalls\\6000.3.24f1\\Editor\\Data\\PlaybackEngines\\AndroidPlayer\\SDK\\cmake\\3.22.1\\bin\\ninja.exe",
+      "-C",
+      "N:\\GitHub Desktop\\Yutika-Shindolkar_DECO7230_2026\\03_prototype-02\\.utmp\\RelWithDebInfo\\4v4f184l\\arm64-v8a",
+      "clean"
+    ]
+  ],
+  "buildTargetsCommandComponents": [
+    "N:\\unity intalls\\6000.3.24f1\\Editor\\Data\\PlaybackEngines\\AndroidPlayer\\SDK\\cmake\\3.22.1\\bin\\ninja.exe",
+    "-C",
+    "N:\\GitHub Desktop\\Yutika-Shindolkar_DECO7230_2026\\03_prototype-02\\.utmp\\RelWithDebInfo\\4v4f184l\\arm64-v8a",
+    "{LIST_OF_TARGETS_TO_BUILD}"
+  ],
+  "libraries": {
+    "game::@d02bb112ea9f9c2ed29f": {
+      "artifactName": "game",
+      "abi": "arm64-v8a",
+      "output": "N:\\GitHub Desktop\\Yutika-Shindolkar_DECO7230_2026\\03_prototype-02\\Library\\Bee\\Android\\Prj\\IL2CPP\\Gradle\\unityLibrary\\build\\intermediates\\cxx\\RelWithDebInfo\\4v4f184l\\obj\\arm64-v8a\\libgame.so",
+      "runtimeFiles": []
+    },
+    "swappywrapper::@7e25bd1f32ce224db4e9": {
+      "artifactName": "swappywrapper",
+      "abi": "arm64-v8a",
+      "output": "N:\\GitHub Desktop\\Yutika-Shindolkar_DECO7230_2026\\03_prototype-02\\Library\\Bee\\Android\\Prj\\IL2CPP\\Gradle\\unityLibrary\\build\\intermediates\\cxx\\RelWithDebInfo\\4v4f184l\\obj\\arm64-v8a\\libswappywrapper.so",
+      "runtimeFiles": []
+    }
+  }
+}
