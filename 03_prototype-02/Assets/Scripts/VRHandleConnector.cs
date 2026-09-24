@@ -11,6 +11,7 @@ public class VRHandleConnector : MonoBehaviour
     public GameObject labelPrefab;
     public float snapDistance = 0.15f;
     public LayerMask handleLayer;
+    public GameObject glowOutline; // yellow hover-glow sphere, shown/hidden below
 
     XRSimpleInteractable interactable;
     GameObject currentLineObj;
@@ -25,12 +26,26 @@ public class VRHandleConnector : MonoBehaviour
     {
         interactable.selectEntered.AddListener(OnGrabbed);
         interactable.selectExited.AddListener(OnReleased);
+        interactable.hoverEntered.AddListener(OnHoverEntered);
+        interactable.hoverExited.AddListener(OnHoverExited);
     }
 
     void OnDisable()
     {
         interactable.selectEntered.RemoveListener(OnGrabbed);
         interactable.selectExited.RemoveListener(OnReleased);
+        interactable.hoverEntered.RemoveListener(OnHoverEntered);
+        interactable.hoverExited.RemoveListener(OnHoverExited);
+    }
+
+    void OnHoverEntered(HoverEnterEventArgs args)
+    {
+        if (glowOutline != null) glowOutline.SetActive(true);
+    }
+
+    void OnHoverExited(HoverExitEventArgs args)
+    {
+        if (glowOutline != null) glowOutline.SetActive(false);
     }
 
     void OnGrabbed(SelectEnterEventArgs args)

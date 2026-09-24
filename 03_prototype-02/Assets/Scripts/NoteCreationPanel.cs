@@ -182,6 +182,25 @@ public class NoteCreationPanel : MonoBehaviour
         RefreshMediaVisuals(true);
     }
 
+    // Wired to the "Create Test Note" button - spawns a fixed Rectangle note with
+    // "dummy text" straight away, skipping the shape pick and typing, purely so testing
+    // connections/labels doesn't require clapping + filling the form out every time.
+    public void CreateTestNote()
+    {
+        int index = (int)NoteShape.Rectangle;
+        if (shapePrefabs == null || index >= shapePrefabs.Length || shapePrefabs[index] == null)
+        {
+            Debug.LogWarning("NoteCreationPanel: no Rectangle prefab assigned, can't create a test note.");
+            return;
+        }
+
+        Vector3 spawnPos = headTransform.position + headTransform.forward * spawnDistance;
+        GameObject note = Instantiate(shapePrefabs[index], spawnPos, Quaternion.identity);
+
+        NoteData data = note.GetComponent<NoteData>();
+        if (data != null) data.SetLabel("dummy text");
+    }
+
     // Wired to the green "Create" button.
     public void ConfirmCreate()
     {

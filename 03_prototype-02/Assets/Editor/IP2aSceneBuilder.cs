@@ -136,6 +136,7 @@ public static class IP2aSceneBuilder
         Material lineMat = GetOrCreateUnlitMaterial(MaterialsDir + "/ConnectionLine_Mat.mat", new Color(0.15f, 0.15f, 0.15f));
         GameObject linePrefab = BuildConnectionLinePrefab(lineMat);
         GameObject labelPrefab = BuildConnectionLabelPrefab();
+        BuildKeyboard(head);
 
         string[] shapeNames = { "Rectangle", "Circle", "Triangle", "Hexagon", "Star" };
         Color[] shapeColors = {
@@ -228,6 +229,26 @@ public static class IP2aSceneBuilder
         titleText.color = Color.black;
         title.transform.localPosition = new Vector3(0, titleY, -0.02f);
         title.transform.localScale = Vector3.one * 0.03f;
+
+        // Test Note button - sits above the card itself (not inside it), for quickly
+        // spawning a fixed Rectangle/"dummy text" note while testing connections and
+        // labels, without clapping + picking a shape + typing every time.
+        GameObject testNoteBtn = FindOrCreateChild(panelGO.transform, "TestNoteButton");
+        SetupRoundedRect(testNoteBtn, 0.30f, 0.06f, 0.02f, 0.012f, new Color(0.55f, 0.5f, 0.8f), "TestNoteButton");
+        testNoteBtn.transform.localPosition = new Vector3(0, panelTopEdge + 0.06f, -0.02f);
+        XRSimpleInteractable testNoteInteractable = testNoteBtn.GetComponent<XRSimpleInteractable>();
+        if (testNoteInteractable == null) testNoteInteractable = testNoteBtn.AddComponent<XRSimpleInteractable>();
+        GameObject testNoteLabel = FindOrCreateChild(testNoteBtn.transform, "Label");
+        TextMeshPro testNoteText = testNoteLabel.GetComponent<TextMeshPro>();
+        if (testNoteText == null) testNoteText = testNoteLabel.AddComponent<TextMeshPro>();
+        testNoteText.text = "Create Test Note";
+        testNoteText.fontSize = 7f;
+        testNoteText.alignment = TextAlignmentOptions.Center;
+        testNoteText.color = Color.white;
+        testNoteLabel.transform.localPosition = new Vector3(0, 0, -0.014f);
+        testNoteLabel.transform.localScale = Vector3.one * 0.03f;
+        RemovePersistentListeners(testNoteInteractable.selectEntered);
+        UnityEventTools.AddVoidPersistentListener(testNoteInteractable.selectEntered, panel.CreateTestNote);
 
         // Shape buttons - real shape icons (not colour swatches), each with a glow ring
         // child that's only shown when that shape is selected.
@@ -514,6 +535,19 @@ public static class IP2aSceneBuilder
         Object.DestroyImmediate(handleVisual.GetComponent<Collider>());
         handleVisual.GetComponent<Renderer>().sharedMaterial = GetOrCreateUnlitMaterial(MaterialsDir + "/Handle_Mat.mat", new Color(0.2f, 0.2f, 0.2f));
 
+        // Yellow hover-glow, hidden until a controller/hand ray or poke is hovering this
+        // handle - same show/hide-on-hover pattern as the shape buttons' glow rings and the
+        // new plus-button sphere.
+        GameObject handleGlow = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        handleGlow.name = "GlowOutline";
+        handleGlow.transform.SetParent(handle.transform, false);
+        handleGlow.transform.localScale = Vector3.one * 0.042f; // a bit larger than HandleVisual so it reads as an outline behind it
+        Object.DestroyImmediate(handleGlow.GetComponent<Collider>());
+        handleGlow.GetComponent<Renderer>().sharedMaterial =
+            GetOrCreateTransparentMaterial(MaterialsDir + "/HandleGlow_Mat.mat", new Color(1f, 0.85f, 0.2f, 0.55f));
+        handleGlow.SetActive(false);
+        connector.glowOutline = handleGlow;
+
         string path = $"{NotesDir}/{shapeName}Note.prefab";
         GameObject prefab = PrefabUtility.SaveAsPrefabAsset(note, path);
         Object.DestroyImmediate(note);
@@ -545,23 +579,203 @@ public static class IP2aSceneBuilder
         GameObject existing = AssetDatabase.LoadAssetAtPath<GameObject>(path);
         if (existing != null) return existing;
 
+        // Root just carries LineLabelFollow (keeps the whole thing positioned/rotated to
+        // the connection's midpoint, "text parallel to the line" - see LineLabelFollow.cs)
+        // - the "+" sphere and the actual label are separate children so only one is ever
+        // visible at a time.
         GameObject go = new GameObject("ConnectionLabel");
-        TextMeshPro text = go.AddComponent<TextMeshPro>();
+        go.transform.localScale = Vector3.one * 0.03f;
+        go.AddComponent<LineLabelFollow>();
+
+        // "+" icon: a translucent green sphere shown on every new connection. Poking it
+        // reveals the relationship label below - the two-step "connect, then label" flow
+        // from the original design concept ("a '+' icon labels the relationship"),
+        // translated from IP1's desktop PlusButtonClick (OnMouseDown) to a VR poke (see
+        // VRPlusButtonClick.cs). GlowOutline is a slightly larger yellow sphere, hidden
+        // until hovered - same show/hide-on-hover pattern as the shape buttons' glow rings.
+        GameObject plusGO = new GameObject("PlusButton");
+        plusGO.transform.SetParent(go.transform, false);
+
+        GameObject plusSphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        plusSphere.name = "SphereVisual";
+        plusSphere.transform.SetParent(plusGO.transform, false);
+        plusSphere.transform.localScale = Vector3.one * 2.2f;
+        Object.DestroyImmediate(plusSphere.GetComponent<Collider>());
+        plusSphere.GetComponent<Renderer>().sharedMaterial =
+            GetOrCreateTransparentMaterial(MaterialsDir + "/PlusButtonSphere_Mat.mat", new Color(0.35f, 0.85f, 0.45f, 0.45f));
+
+        GameObject plusGlow = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        plusGlow.name = "GlowOutline";
+        plusGlow.transform.SetParent(plusGO.transform, false);
+        plusGlow.transform.localScale = Vector3.one * 2.6f; // a bit larger than SphereVisual so it reads as an outline behind it
+        Object.DestroyImmediate(plusGlow.GetComponent<Collider>());
+        plusGlow.GetComponent<Renderer>().sharedMaterial =
+            GetOrCreateTransparentMaterial(MaterialsDir + "/PlusButtonGlow_Mat.mat", new Color(1f, 0.85f, 0.2f, 0.55f));
+        plusGlow.SetActive(false);
+
+        GameObject plusGlyphGO = new GameObject("PlusGlyph");
+        plusGlyphGO.transform.SetParent(plusGO.transform, false);
+        TextMeshPro plusText = plusGlyphGO.AddComponent<TextMeshPro>();
+        plusText.transform.localPosition = new Vector3(0, 0, -1.15f); // just in front of the sphere's surface
+        plusText.text = "+";
+        plusText.fontSize = 5f;
+        plusText.alignment = TextAlignmentOptions.Center;
+        plusText.color = Color.white;
+
+        SphereCollider plusCol = plusGO.AddComponent<SphereCollider>();
+        plusCol.radius = 1.3f;
+        plusGO.AddComponent<XRSimpleInteractable>();
+
+        // Label text: hidden until the "+" is poked, which opens the shared VRKeyboard
+        // (see BuildKeyboard/VRKeyboard.cs) aimed at this TMP_Text - free typed text, not
+        // presets. Poking the label again once it's showing reopens the keyboard pre-filled
+        // with its current text, so it stays editable afterwards (VRLabelEdit.cs).
+        GameObject labelGO = new GameObject("LabelText");
+        labelGO.transform.SetParent(go.transform, false);
+        TextMeshPro text = labelGO.AddComponent<TextMeshPro>();
         text.text = "Related to";
         text.fontSize = 3f;
         text.alignment = TextAlignmentOptions.Center;
         text.color = Color.black;
-        go.transform.localScale = Vector3.one * 0.03f;
-
-        BoxCollider col = go.AddComponent<BoxCollider>();
+        BoxCollider col = labelGO.AddComponent<BoxCollider>();
         col.size = new Vector3(3f, 1.5f, 0.5f);
-        go.AddComponent<XRSimpleInteractable>();
-        go.AddComponent<PresetLabelCycler>().targetText = text;
-        go.AddComponent<LineLabelFollow>();
+        labelGO.AddComponent<XRSimpleInteractable>();
+        labelGO.AddComponent<VRLabelEdit>().targetText = text;
+        labelGO.SetActive(false);
+
+        VRPlusButtonClick plusClick = plusGO.AddComponent<VRPlusButtonClick>();
+        plusClick.labelText = text;
+        plusClick.glowOutline = plusGlow;
 
         GameObject prefab = PrefabUtility.SaveAsPrefabAsset(go, path);
         Object.DestroyImmediate(go);
         return prefab;
+    }
+
+    // Single reusable world-space poke keyboard (see VRKeyboard.cs) - IP2a's one piece of
+    // real free-text entry, used for typing a connection's relationship label. Built once
+    // here rather than per-connection; VRPlusButtonClick/VRLabelEdit just point it at
+    // whichever TMP_Text they want typed into. QWERTY layout (not alphabetical) since
+    // that's the layout everyone already has muscle memory for.
+    // NOT yet tested on-device or in Play mode - check key spacing/collider sizes are
+    // actually comfortable to poke once you can see it, this was built from measurements
+    // matching the rest of the panel, not from a live test.
+    static void BuildKeyboard(Transform head)
+    {
+        GameObject kbGO = FindOrCreate("VRKeyboard");
+        VRKeyboard kb = kbGO.GetComponent<VRKeyboard>();
+        if (kb == null) kb = kbGO.AddComponent<VRKeyboard>();
+
+        float panelWidth = 0.70f; // wide enough for four bottom-row buttons (Del/Space/Cancel/Confirm)
+        float panelHeight = 0.36f;
+        GameObject bg = FindOrCreateChild(kbGO.transform, "KeyboardBackground");
+        SetupRoundedRect(bg, panelWidth, panelHeight, 0.02f, 0.015f, Color.white, "KeyboardBackground");
+        bg.transform.localPosition = Vector3.zero;
+        RemoveCollider(bg);
+
+        GameObject outline = FindOrCreateChild(kbGO.transform, "KeyboardOutline");
+        SetupRoundedRect(outline, panelWidth + 0.012f, panelHeight + 0.012f, 0.026f, 0.01f,
+            new Color(169f / 255f, 169f / 255f, 169f / 255f), "KeyboardOutline");
+        outline.transform.localPosition = new Vector3(0, 0, 0.005f);
+        RemoveCollider(outline);
+
+        GameObject previewGO = FindOrCreateChild(kbGO.transform, "PreviewText");
+        TextMeshPro previewText = previewGO.GetComponent<TextMeshPro>();
+        if (previewText == null) previewText = previewGO.AddComponent<TextMeshPro>();
+        previewText.text = "...";
+        previewText.fontSize = 9f;
+        previewText.alignment = TextAlignmentOptions.Center;
+        previewText.color = Color.black;
+        previewGO.transform.localPosition = new Vector3(0, 0.14f, -0.02f);
+        previewGO.transform.localScale = Vector3.one * 0.03f;
+
+        string[] rows = { "QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM" };
+        float[] rowY = { 0.06f, 0f, -0.06f };
+        float keySize = 0.048f;
+        float keyStep = 0.054f;
+        float keyRadius = 0.008f;
+        Color keyColor = new Color(0.9f, 0.9f, 0.9f);
+
+        for (int r = 0; r < rows.Length; r++)
+        {
+            string row = rows[r];
+            float startX = -(row.Length - 1) * keyStep * 0.5f;
+            for (int i = 0; i < row.Length; i++)
+            {
+                char c = row[i];
+                GameObject key = FindOrCreateChild(kbGO.transform, "Key_" + c);
+                SetupRoundedRect(key, keySize, keySize, keyRadius, 0.01f, keyColor, "Key_" + c);
+                key.transform.localPosition = new Vector3(startX + i * keyStep, rowY[r], -0.02f);
+
+                XRSimpleInteractable interactable = key.GetComponent<XRSimpleInteractable>();
+                if (interactable == null) interactable = key.AddComponent<XRSimpleInteractable>();
+
+                GameObject label = FindOrCreateChild(key.transform, "Label");
+                TextMeshPro labelText = label.GetComponent<TextMeshPro>();
+                if (labelText == null) labelText = label.AddComponent<TextMeshPro>();
+                labelText.text = c.ToString();
+                labelText.fontSize = 7f;
+                labelText.alignment = TextAlignmentOptions.Center;
+                labelText.color = Color.black;
+                label.transform.localPosition = new Vector3(0, 0, -0.012f);
+                label.transform.localScale = Vector3.one * 0.03f;
+
+                VRKeyboardKey keyScript = key.GetComponent<VRKeyboardKey>();
+                if (keyScript == null) keyScript = key.AddComponent<VRKeyboardKey>();
+                keyScript.action = VRKeyboardKey.KeyAction.Character;
+                keyScript.character = c.ToString().ToLowerInvariant();
+            }
+        }
+
+        // Bottom row: Backspace / Space (wide) / Cancel / Confirm.
+        float bottomY = -0.13f;
+        BuildKeyboardActionKey(kbGO.transform, "Key_Backspace", "Del", 0.10f, 0.05f,
+            new Color(0.75f, 0.35f, 0.35f), new Vector3(-0.27f, bottomY, -0.02f), VRKeyboardKey.KeyAction.Backspace);
+        BuildKeyboardActionKey(kbGO.transform, "Key_Space", "Space", 0.20f, 0.05f,
+            keyColor, new Vector3(-0.06f, bottomY, -0.02f), VRKeyboardKey.KeyAction.Space);
+        BuildKeyboardActionKey(kbGO.transform, "Key_Cancel", "Cancel", 0.12f, 0.05f,
+            new Color(0.5f, 0.5f, 0.5f), new Vector3(0.13f, bottomY, -0.02f), VRKeyboardKey.KeyAction.Cancel);
+        BuildKeyboardActionKey(kbGO.transform, "Key_Confirm", "Confirm", 0.13f, 0.05f,
+            new Color(0.35f, 0.75f, 0.4f), new Vector3(0.28f, bottomY, -0.02f), VRKeyboardKey.KeyAction.Confirm);
+
+        var so = new SerializedObject(kb);
+        so.FindProperty("headTransform").objectReferenceValue = head;
+        so.FindProperty("spawnDistance").floatValue = 0.6f;
+        so.FindProperty("previewText").objectReferenceValue = previewText;
+        so.ApplyModifiedProperties();
+
+        kbGO.SetActive(false);
+    }
+
+    static void BuildKeyboardActionKey(Transform parent, string name, string labelStr, float width, float height,
+        Color color, Vector3 localPos, VRKeyboardKey.KeyAction action)
+    {
+        GameObject key = FindOrCreateChild(parent, name);
+        SetupRoundedRect(key, width, height, 0.01f, 0.01f, color, name);
+        key.transform.localPosition = localPos;
+
+        XRSimpleInteractable interactable = key.GetComponent<XRSimpleInteractable>();
+        if (interactable == null) interactable = key.AddComponent<XRSimpleInteractable>();
+
+        GameObject label = FindOrCreateChild(key.transform, "Label");
+        TextMeshPro labelText = label.GetComponent<TextMeshPro>();
+        if (labelText == null) labelText = label.AddComponent<TextMeshPro>();
+        labelText.text = labelStr;
+        labelText.fontSize = 6f;
+        labelText.alignment = TextAlignmentOptions.Center;
+        // Space shares the light letter-key colour (passed in as `color`), so it needs
+        // dark text too - only the coloured/dark action keys (Backspace/Cancel/Confirm)
+        // get white text.
+        bool darkBackground = action == VRKeyboardKey.KeyAction.Backspace
+            || action == VRKeyboardKey.KeyAction.Cancel
+            || action == VRKeyboardKey.KeyAction.Confirm;
+        labelText.color = darkBackground ? Color.white : Color.black;
+        label.transform.localPosition = new Vector3(0, 0, -0.012f);
+        label.transform.localScale = Vector3.one * 0.03f;
+
+        VRKeyboardKey keyScript = key.GetComponent<VRKeyboardKey>();
+        if (keyScript == null) keyScript = key.AddComponent<VRKeyboardKey>();
+        keyScript.action = action;
     }
 
     // Builds the desk-mic-style fixture mounted on the panel's right edge: a fixed base,
@@ -1106,6 +1320,33 @@ public static class IP2aSceneBuilder
         Material mat = new Material(shader);
         mat.color = color;
         if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", 0.1f);
+        AssetDatabase.CreateAsset(mat, path);
+        return mat;
+    }
+
+    // Same as GetOrCreateUnlitMaterial but configured as a URP "Transparent" surface, so
+    // the colour's alpha actually renders see-through instead of being ignored (URP Lit's
+    // default Opaque surface type ignores alpha entirely). Used for the plus-button sphere
+    // and the yellow hover-glow spheres.
+    static Material GetOrCreateTransparentMaterial(string path, Color color)
+    {
+        Material existing = AssetDatabase.LoadAssetAtPath<Material>(path);
+        if (existing != null) return existing;
+
+        Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+        Material mat = new Material(shader);
+        mat.color = color;
+        mat.SetFloat("_Surface", 1f); // 0 = Opaque, 1 = Transparent
+        mat.SetFloat("_Blend", 0f);   // Alpha blend
+        mat.SetOverrideTag("RenderType", "Transparent");
+        mat.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+        mat.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+        mat.SetInt("_ZWrite", 0);
+        mat.DisableKeyword("_ALPHATEST_ON");
+        mat.EnableKeyword("_ALPHABLEND_ON");
+        mat.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+        mat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+        if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", 0.4f);
         AssetDatabase.CreateAsset(mat, path);
         return mat;
     }
