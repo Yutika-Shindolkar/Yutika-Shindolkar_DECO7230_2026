@@ -13,6 +13,8 @@
 [Uu]ser[Ss]ettings/
 [Mm]emoryCaptures/
 [Rr]ecordings/
+# Unity Android build intermediates (CMake/Gradle native build cache)
+.utmp/
 
 # Unity builds and exports
 [Bb]uild/
