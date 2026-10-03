@@ -137,6 +137,7 @@ public static class IP2aSceneBuilder
         GameObject linePrefab = BuildConnectionLinePrefab(lineMat);
         GameObject labelPrefab = BuildConnectionLabelPrefab();
         BuildKeyboard(head);
+        BuildTourMode(head, leftHand, rig);
 
         string[] shapeNames = { "Rectangle", "Circle", "Triangle", "Hexagon", "Star" };
         Color[] shapeColors = {
@@ -776,6 +777,194 @@ public static class IP2aSceneBuilder
         VRKeyboardKey keyScript = key.GetComponent<VRKeyboardKey>();
         if (keyScript == null) keyScript = key.AddComponent<VRKeyboardKey>();
         keyScript.action = action;
+    }
+
+    // Wires VRTourMode.cs into the scene: a compact watch-style menu mounted on the back
+    // of the left hand/controller that shows once you rotate your wrist to look at it
+    // (see VRTourMode.IsLookingAtWrist), listing every connected note (TourManager.tourPath,
+    // populated by VRHandleConnector.OnReleased whenever two notes get linked) and
+    // teleporting the rig's XR Origin there on poke. This method only builds/wires the
+    // visuals - the look-detection, list-rebuilding and jump logic all already existed in
+    // VRTourMode.cs, fully written but never hooked up to anything in the scene.
+    static void BuildTourMode(Transform head, Transform leftHand, GameObject rig)
+    {
+        if (leftHand == null)
+        {
+            Debug.LogWarning("IP2aSceneBuilder: 'Left Controller' not found under the XR rig - Tour Mode needs a wrist to mount its menu on, skipping.");
+            return;
+        }
+
+        GameObject listItemPrefab = BuildTourListItemPrefab();
+
+        // --- Wrist menu canvas ---
+        GameObject menuGO = FindOrCreateChild(leftHand, "TourMenu");
+        menuGO.transform.localPosition = new Vector3(0f, 0.06f, 0f);
+        // Rotates the canvas's front face (-Z of an unrotated RectTransform) to point along
+        // the wrist's local +Y ("up") - VRTourMode's own look check compares
+        // wristTransform.up against the direction back to the headset, so the menu should
+        // face the same way (i.e. up toward your face when you turn your wrist to look at
+        // it, watch-check style). Exact offset/angle will likely need live tuning once it's
+        // actually on a controller - same as the mic mount and panel layout were.
+        menuGO.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+        menuGO.transform.localScale = Vector3.one * TextCanvasScale;
+
+        Canvas menuCanvas = menuGO.GetComponent<Canvas>();
+        if (menuCanvas == null) menuCanvas = menuGO.AddComponent<Canvas>();
+        menuCanvas.renderMode = RenderMode.WorldSpace;
+        RectTransform menuRect = menuGO.GetComponent<RectTransform>();
+        menuRect.sizeDelta = new Vector2(0.20f / TextCanvasScale, 0.26f / TextCanvasScale);
+        if (menuGO.GetComponent<CanvasRenderer>() == null) menuGO.AddComponent<CanvasRenderer>();
+        if (menuGO.GetComponent<GraphicRaycaster>() == null) menuGO.AddComponent<GraphicRaycaster>();
+
+        GameObject menuBg = FindOrCreateChild(menuGO.transform, "Background");
+        RectTransform menuBgRect = menuBg.GetComponent<RectTransform>();
+        if (menuBgRect == null) menuBgRect = menuBg.AddComponent<RectTransform>();
+        menuBgRect.anchorMin = Vector2.zero;
+        menuBgRect.anchorMax = Vector2.one;
+        menuBgRect.sizeDelta = Vector2.zero;
+        Image menuBgImage = menuBg.GetComponent<Image>();
+        if (menuBgImage == null) menuBgImage = menuBg.AddComponent<Image>();
+        menuBgImage.color = Color.white;
+
+        GameObject menuTitleGO = FindOrCreateChild(menuGO.transform, "Title");
+        RectTransform menuTitleRect = menuTitleGO.GetComponent<RectTransform>();
+        if (menuTitleRect == null) menuTitleRect = menuTitleGO.AddComponent<RectTransform>();
+        menuTitleRect.anchorMin = new Vector2(0f, 0.88f);
+        menuTitleRect.anchorMax = new Vector2(1f, 1f);
+        menuTitleRect.sizeDelta = Vector2.zero;
+        TextMeshProUGUI menuTitleText = menuTitleGO.GetComponent<TextMeshProUGUI>();
+        if (menuTitleText == null) menuTitleText = menuTitleGO.AddComponent<TextMeshProUGUI>();
+        menuTitleText.text = "Tour";
+        menuTitleText.fontSize = 34;
+        menuTitleText.alignment = TextAlignmentOptions.Center;
+        menuTitleText.color = Color.black;
+
+        // Scroll view: Viewport (masked) + Content (vertical stack of note buttons, one
+        // per TourManager.tourPath entry, rebuilt by VRTourMode.RebuildList() every time
+        // the menu opens).
+        GameObject viewportGO = FindOrCreateChild(menuGO.transform, "Viewport");
+        RectTransform viewportRect = viewportGO.GetComponent<RectTransform>();
+        if (viewportRect == null) viewportRect = viewportGO.AddComponent<RectTransform>();
+        viewportRect.anchorMin = new Vector2(0.05f, 0.04f);
+        viewportRect.anchorMax = new Vector2(0.95f, 0.85f);
+        viewportRect.sizeDelta = Vector2.zero;
+        if (viewportGO.GetComponent<RectMask2D>() == null) viewportGO.AddComponent<RectMask2D>();
+        Image viewportImage = viewportGO.GetComponent<Image>();
+        if (viewportImage == null) viewportImage = viewportGO.AddComponent<Image>();
+        viewportImage.color = new Color(1f, 1f, 1f, 0.001f); // RectMask2D needs a Graphic to clip against, kept near-invisible
+
+        GameObject contentGO = FindOrCreateChild(viewportGO.transform, "Content");
+        RectTransform contentRect = contentGO.GetComponent<RectTransform>();
+        if (contentRect == null) contentRect = contentGO.AddComponent<RectTransform>();
+        contentRect.anchorMin = new Vector2(0f, 1f);
+        contentRect.anchorMax = new Vector2(1f, 1f);
+        contentRect.pivot = new Vector2(0.5f, 1f);
+        contentRect.sizeDelta = Vector2.zero;
+        VerticalLayoutGroup layout = contentGO.GetComponent<VerticalLayoutGroup>();
+        if (layout == null) layout = contentGO.AddComponent<VerticalLayoutGroup>();
+        layout.childControlHeight = true;
+        layout.childControlWidth = true;
+        layout.childForceExpandHeight = false;
+        layout.childForceExpandWidth = true;
+        layout.spacing = 20f;
+        ContentSizeFitter fitter = contentGO.GetComponent<ContentSizeFitter>();
+        if (fitter == null) fitter = contentGO.AddComponent<ContentSizeFitter>();
+        fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+        ScrollRect scrollRect = menuGO.GetComponent<ScrollRect>();
+        if (scrollRect == null) scrollRect = menuGO.AddComponent<ScrollRect>();
+        scrollRect.content = contentRect;
+        scrollRect.viewport = viewportRect;
+        scrollRect.horizontal = false;
+        scrollRect.vertical = true;
+        scrollRect.movementType = ScrollRect.MovementType.Clamped;
+
+        // Exit Tour button - deliberately NOT part of the scroll view/Content, since
+        // RebuildList() destroys and recreates every child of Content on every menu open.
+        // Same poke-button pattern as the rest of the panel (SetupRoundedRect +
+        // XRSimpleInteractable), parented to the wrist so it travels with the player once
+        // JumpTo() moves the XR Origin. Hidden until VRTourMode.JumpTo()/ExitTour() toggle it.
+        GameObject exitBtn = FindOrCreateChild(leftHand, "ExitTourButton");
+        SetupRoundedRect(exitBtn, 0.10f, 0.04f, 0.012f, 0.01f, new Color(0.75f, 0.35f, 0.35f), "ExitTourButton");
+        exitBtn.transform.localPosition = new Vector3(0f, -0.04f, 0f);
+        exitBtn.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+        XRSimpleInteractable exitInteractable = exitBtn.GetComponent<XRSimpleInteractable>();
+        if (exitInteractable == null) exitInteractable = exitBtn.AddComponent<XRSimpleInteractable>();
+        GameObject exitLabel = FindOrCreateChild(exitBtn.transform, "Label");
+        TextMeshPro exitLabelText = exitLabel.GetComponent<TextMeshPro>();
+        if (exitLabelText == null) exitLabelText = exitLabel.AddComponent<TextMeshPro>();
+        exitLabelText.text = "Exit Tour";
+        exitLabelText.fontSize = 6f;
+        exitLabelText.alignment = TextAlignmentOptions.Center;
+        exitLabelText.color = Color.white;
+        exitLabel.transform.localPosition = new Vector3(0, 0, -0.012f);
+        exitLabel.transform.localScale = Vector3.one * 0.03f;
+        exitBtn.SetActive(false);
+
+        // --- VRTourMode component + wiring ---
+        GameObject tourGO = FindOrCreate("TourMode");
+        VRTourMode tour = tourGO.GetComponent<VRTourMode>();
+        if (tour == null) tour = tourGO.AddComponent<VRTourMode>();
+
+        RemovePersistentListeners(exitInteractable.selectEntered);
+        UnityEventTools.AddVoidPersistentListener(exitInteractable.selectEntered, tour.ExitTour);
+
+        var tourSo = new SerializedObject(tour);
+        tourSo.FindProperty("headTransform").objectReferenceValue = head;
+        tourSo.FindProperty("wristTransform").objectReferenceValue = leftHand;
+        tourSo.FindProperty("xrOriginRoot").objectReferenceValue = rig.transform;
+        tourSo.FindProperty("menuCanvas").objectReferenceValue = menuGO;
+        tourSo.FindProperty("listContent").objectReferenceValue = contentRect;
+        tourSo.FindProperty("listItemButtonPrefab").objectReferenceValue = listItemPrefab;
+        tourSo.FindProperty("exitTourButton").objectReferenceValue = exitBtn;
+        tourSo.ApplyModifiedProperties();
+
+        // Safe to deactivate here (unlike VRKeyboard's root object) - this is a *child*
+        // found via FindOrCreateChild/Transform.Find, which (unlike the GameObject.Find
+        // used for top-level objects) still finds inactive children, so idempotency on
+        // rerun isn't affected. VRTourMode.Start() also hides it at Play-mode start.
+        menuGO.SetActive(false);
+    }
+
+    // Runtime list-item prefab for the wrist menu's scroll view: a plain uGUI Button (not
+    // an XRSimpleInteractable poke button like the rest of this file) because
+    // VRTourMode.RebuildList() drives it through Button.onClick, matching how the note
+    // text field elsewhere in this file already goes through Canvas + GraphicRaycaster
+    // rather than a 3D collider.
+    static GameObject BuildTourListItemPrefab()
+    {
+        string path = $"{PrefabDir}/TourListItemPrefab.prefab";
+        GameObject existing = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+        if (existing != null) return existing;
+
+        GameObject go = new GameObject("TourListItem", typeof(RectTransform));
+        RectTransform rect = go.GetComponent<RectTransform>();
+        rect.sizeDelta = new Vector2(0f, 60f);
+
+        Image bg = go.AddComponent<Image>();
+        bg.color = new Color(0.85f, 0.85f, 0.9f);
+
+        Button btn = go.AddComponent<Button>();
+        btn.targetGraphic = bg;
+
+        GameObject labelGO = new GameObject("Label", typeof(RectTransform));
+        labelGO.transform.SetParent(go.transform, false);
+        RectTransform labelRect = labelGO.GetComponent<RectTransform>();
+        labelRect.anchorMin = Vector2.zero;
+        labelRect.anchorMax = Vector2.one;
+        labelRect.sizeDelta = Vector2.zero;
+        TextMeshProUGUI label = labelGO.AddComponent<TextMeshProUGUI>();
+        label.text = "Item";
+        label.fontSize = 28;
+        label.alignment = TextAlignmentOptions.Center;
+        label.color = Color.black;
+        label.enableAutoSizing = true;
+        label.fontSizeMin = 12;
+        label.fontSizeMax = 28;
+
+        GameObject prefab = PrefabUtility.SaveAsPrefabAsset(go, path);
+        Object.DestroyImmediate(go);
+        return prefab;
     }
 
     // Builds the desk-mic-style fixture mounted on the panel's right edge: a fixed base,
