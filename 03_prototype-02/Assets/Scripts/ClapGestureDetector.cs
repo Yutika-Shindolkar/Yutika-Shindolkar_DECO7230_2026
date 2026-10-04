@@ -1,8 +1,13 @@
 using UnityEngine;
 using UnityEngine.Events;
+#if UNITY_EDITOR
+using UnityEngine.InputSystem;
+#endif
 
 // Detects a "clap": both hands closing fast and ending up close together.
 // Assign the two controller/hand transforms from the XR rig in the Inspector.
+// In the Editor, pressing N also counts as a clap, since the XR Interaction Simulator
+// can only move one controller at a time. (N is not used by the simulator's controls.)
 public class ClapGestureDetector : MonoBehaviour
 {
     public Transform leftHand;
@@ -20,6 +25,11 @@ public class ClapGestureDetector : MonoBehaviour
 
     void Update()
     {
+#if UNITY_EDITOR
+        if (Keyboard.current != null && Keyboard.current.nKey.wasPressedThisFrame)
+            onClap.Invoke();
+#endif
+
         if (leftHand == null || rightHand == null) return;
 
         if (cooldownTimer > 0f)

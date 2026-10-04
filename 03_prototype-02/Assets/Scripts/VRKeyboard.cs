@@ -18,6 +18,14 @@ public class VRKeyboard : MonoBehaviour
     GameObject cancelReactivateTarget;
     string buffer = "";
 
+    // Callback mode (see the second Open overload): used by NoteCreationPanel, which
+    // needs the typed string itself rather than having it written into a TMP_Text.
+    System.Action<string> onConfirm;
+    object owner;
+
+    // The root GameObject stays active in the scene so Awake always runs and Instance is
+    // set; it hides itself here at Play start. (An earlier version saved it inactive, so
+    // Awake never ran and Instance stayed null.)
     void Awake()
     {
         Instance = this;
@@ -35,6 +43,32 @@ public class VRKeyboard : MonoBehaviour
     {
         targetText = target;
         this.cancelReactivateTarget = cancelReactivateTarget;
+        onConfirm = null;
+        owner = null;
+        Show(startingText);
+    }
+
+    // Callback mode: Confirm passes the typed text (even an empty string, so a note's
+    // text can be cleared) to onConfirm instead of writing into a TMP_Text. owner lets
+    // the caller close the keyboard later only if it's still the one using it.
+    public void Open(string startingText, System.Action<string> onConfirm, object owner)
+    {
+        targetText = null;
+        cancelReactivateTarget = null;
+        this.onConfirm = onConfirm;
+        this.owner = owner;
+        Show(startingText);
+    }
+
+    // Closes the keyboard without confirming, but only if `owner` opened it - e.g. the
+    // note panel closing shouldn't shut a keyboard that a connection label is using.
+    public void CancelIfOpenedBy(object owner)
+    {
+        if (gameObject.activeSelf && this.owner != null && this.owner == owner) Cancel();
+    }
+
+    void Show(string startingText)
+    {
         buffer = startingText ?? "";
         RefreshPreview();
 
@@ -64,6 +98,16 @@ public class VRKeyboard : MonoBehaviour
     // Confirm by mistake shouldn't blank it out).
     public void Confirm()
     {
+        if (onConfirm != null)
+        {
+            System.Action<string> callback = onConfirm;
+            onConfirm = null;
+            owner = null;
+            gameObject.SetActive(false);
+            callback(buffer);
+            return;
+        }
+
         if (targetText != null && buffer.Length > 0)
         {
             targetText.text = buffer;
@@ -78,6 +122,8 @@ public class VRKeyboard : MonoBehaviour
     public void Cancel()
     {
         if (cancelReactivateTarget != null) cancelReactivateTarget.SetActive(true);
+        onConfirm = null;
+        owner = null;
         gameObject.SetActive(false);
     }
 

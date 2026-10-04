@@ -129,9 +129,16 @@ public static class IP2aSceneBuilder
             Debug.LogError("IP2aSceneBuilder: couldn't find 'XR Origin (XR Rig)' in the open scene.");
             return;
         }
+        // The XRI starter rig nests the camera and both controllers under "Camera Offset".
         Transform head = rig.transform.Find("Camera Offset/Main Camera");
-        Transform leftHand = rig.transform.Find("Left Controller");
-        Transform rightHand = rig.transform.Find("Right Controller");
+        Transform leftHand = rig.transform.Find("Camera Offset/Left Controller");
+        Transform rightHand = rig.transform.Find("Camera Offset/Right Controller");
+        if (head == null || leftHand == null || rightHand == null)
+            Debug.LogError("IP2aSceneBuilder: couldn't find Main Camera / Left Controller / Right Controller under 'XR Origin (XR Rig)/Camera Offset'.");
+
+        // Earlier runs of this builder left duplicate copies of some objects behind
+        // (FindOrCreate used to miss inactive ones). Clear those out first.
+        RemoveDuplicateRoots();
 
         Material lineMat = GetOrCreateUnlitMaterial(MaterialsDir + "/ConnectionLine_Mat.mat", new Color(0.15f, 0.15f, 0.15f));
         GameObject linePrefab = BuildConnectionLinePrefab(lineMat);
@@ -250,6 +257,7 @@ public static class IP2aSceneBuilder
         testNoteLabel.transform.localScale = Vector3.one * 0.03f;
         RemovePersistentListeners(testNoteInteractable.selectEntered);
         UnityEventTools.AddVoidPersistentListener(testNoteInteractable.selectEntered, panel.CreateTestNote);
+        if (testNoteBtn.GetComponent<DevOnly>() == null) testNoteBtn.AddComponent<DevOnly>();
 
         // Shape buttons - real shape icons (not colour swatches), each with a glow ring
         // child that's only shown when that shape is selected.
@@ -296,9 +304,11 @@ public static class IP2aSceneBuilder
         }
 
         // Note text field - tinted by NoteCreationPanel at runtime to match the picked shape.
-        TMP_InputField textField = BuildTextInputField(panelGO.transform, "NoteTextField",
+        // Pressing it opens the VR keyboard (NoteCreationPanel.EditNoteText).
+        BuildNoteTextField(panelGO.transform, "NoteTextField",
             new Vector3(0, textFieldY, -0.018f), new Vector2(textFieldWidth, textFieldHeight),
-            new Color(245f / 255f, 245f / 255f, 245f / 255f));
+            new Color(245f / 255f, 245f / 255f, 245f / 255f), panel,
+            out TMP_Text noteTextDisplay, out GameObject notePlaceholder, out Image noteFieldBackground);
 
         // Add Image / Add Video / Add Document - clickable, but NoteCreationPanel only
         // enables their XRSimpleInteractable once Rectangle is the picked shape (and
@@ -409,7 +419,9 @@ public static class IP2aSceneBuilder
         for (int i = 0; i < 5; i++)
             colorsProp.GetArrayElementAtIndex(i).colorValue = shapeColors[i];
 
-        so.FindProperty("noteTextField").objectReferenceValue = textField;
+        so.FindProperty("noteTextDisplay").objectReferenceValue = noteTextDisplay;
+        so.FindProperty("notePlaceholder").objectReferenceValue = notePlaceholder;
+        so.FindProperty("noteFieldBackground").objectReferenceValue = noteFieldBackground;
         so.FindProperty("defaultFieldColor").colorValue = new Color(245f / 255f, 245f / 255f, 245f / 255f);
 
         SerializedProperty mediaButtonsProp = so.FindProperty("mediaButtons");
@@ -429,6 +441,12 @@ public static class IP2aSceneBuilder
         RemovePersistentListeners(clap.onClap);
         UnityEventTools.AddVoidPersistentListener(clap.onClap, promptNote.Hide);
         UnityEventTools.AddVoidPersistentListener(clap.onClap, panel.OpenPanel);
+
+        // The screen-space "TEST: Click to Clap" button (Tools > IP2a > Add Test Clap
+        // Button) is a desktop-only aid; keep it out of non-development device builds.
+        GameObject testClapCanvas = FindRoot("TestClapButtonCanvas");
+        if (testClapCanvas != null && testClapCanvas.GetComponent<DevOnly>() == null)
+            testClapCanvas.AddComponent<DevOnly>();
 
         EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
         EditorSceneManager.SaveOpenScenes();
@@ -745,7 +763,9 @@ public static class IP2aSceneBuilder
         so.FindProperty("previewText").objectReferenceValue = previewText;
         so.ApplyModifiedProperties();
 
-        kbGO.SetActive(false);
+        // Left active on purpose: VRKeyboard.Awake sets Instance and then hides the
+        // keyboard itself at Play start. Saving it inactive meant Awake never ran.
+        kbGO.SetActive(true);
     }
 
     static void BuildKeyboardActionKey(Transform parent, string name, string labelStr, float width, float height,
@@ -1415,9 +1435,21 @@ public static class IP2aSceneBuilder
     // runtime (see NoteCreationPanel.HighlightShape) - all the shape colours are light
     // pastels, so dark text always has enough contrast. Typing is via a physical
     // keyboard for now (no on-screen keyboard wired up).
-    static TMP_InputField BuildTextInputField(Transform parent, string name, Vector3 localPos, Vector2 worldSize, Color bgColor)
+    // A tap-to-type text field: a world-space canvas showing the text (or a placeholder),
+    // plus a collider and XRSimpleInteractable so a trigger press, poke or Editor mouse
+    // click opens the shared VRKeyboard. It used to be a uGUI TMP_InputField, which can't
+    // receive XR input in this setup and would only have offered a desktop keyboard.
+    static void BuildNoteTextField(Transform parent, string name, Vector3 localPos, Vector2 worldSize, Color bgColor,
+        NoteCreationPanel panel, out TMP_Text textDisplay, out GameObject placeholderObject, out Image background)
     {
         GameObject fieldGO = FindOrCreateChild(parent, name);
+
+        // Strip the old input-field setup from scenes built by earlier versions. The
+        // GraphicRaycaster goes too: nothing on this canvas needs uGUI pointer events.
+        TMP_InputField oldField = fieldGO.GetComponent<TMP_InputField>();
+        if (oldField != null) Object.DestroyImmediate(oldField);
+        GraphicRaycaster oldRaycaster = fieldGO.GetComponent<GraphicRaycaster>();
+        if (oldRaycaster != null) Object.DestroyImmediate(oldRaycaster);
         fieldGO.transform.localPosition = localPos;
         fieldGO.transform.localRotation = Quaternion.identity;
         fieldGO.transform.localScale = Vector3.one * TextCanvasScale;
@@ -1428,7 +1460,6 @@ public static class IP2aSceneBuilder
         RectTransform rect = fieldGO.GetComponent<RectTransform>();
         rect.sizeDelta = worldSize / TextCanvasScale;
         if (fieldGO.GetComponent<CanvasRenderer>() == null) fieldGO.AddComponent<CanvasRenderer>();
-        if (fieldGO.GetComponent<GraphicRaycaster>() == null) fieldGO.AddComponent<GraphicRaycaster>();
 
         GameObject bgGO = FindOrCreateChild(fieldGO.transform, "Background");
         RectTransform bgRect = bgGO.GetComponent<RectTransform>();
@@ -1474,22 +1505,23 @@ public static class IP2aSceneBuilder
         textRect.anchorMax = Vector2.one;
         textRect.sizeDelta = Vector2.zero;
 
-        TMP_InputField field = fieldGO.GetComponent<TMP_InputField>();
-        if (field == null) field = fieldGO.AddComponent<TMP_InputField>();
-        field.targetGraphic = bgImage;
-        field.textViewport = textAreaRect;
-        field.textComponent = text;
-        field.placeholder = placeholder;
-        field.lineType = TMP_InputField.LineType.MultiLineNewline;
+        text.text = "";
 
-        // 3D collider so the field can also be targeted with an XR ray/poke, not just
-        // clicked directly in the desktop simulator.
+        // 3D collider so the field can be targeted with an XR ray/poke (and the Editor
+        // mouse, see XRButtonPressRouter).
         BoxCollider col = fieldGO.GetComponent<BoxCollider>();
         if (col == null) col = fieldGO.AddComponent<BoxCollider>();
         col.size = new Vector3(rect.sizeDelta.x, rect.sizeDelta.y, 10f);
         col.center = Vector3.zero;
 
-        return field;
+        XRSimpleInteractable interactable = fieldGO.GetComponent<XRSimpleInteractable>();
+        if (interactable == null) interactable = fieldGO.AddComponent<XRSimpleInteractable>();
+        RemovePersistentListeners(interactable.selectEntered);
+        UnityEventTools.AddVoidPersistentListener(interactable.selectEntered, panel.EditNoteText);
+
+        textDisplay = text;
+        placeholderObject = placeholder.gameObject;
+        background = bgImage;
     }
 
     // ---------- Small helpers ----------
@@ -1540,11 +1572,78 @@ public static class IP2aSceneBuilder
         return mat;
     }
 
+    // Looks up a top-level object by name, including inactive ones (GameObject.Find skips
+    // inactive objects, which is how duplicate VRKeyboards got created on reruns).
+    static GameObject FindRoot(string name)
+    {
+        foreach (GameObject root in EditorSceneManager.GetActiveScene().GetRootGameObjects())
+            if (root.name == name) return root;
+        return null;
+    }
+
     static GameObject FindOrCreate(string name)
     {
-        GameObject go = GameObject.Find(name);
+        GameObject go = FindRoot(name);
         if (go == null) go = new GameObject(name);
         return go;
+    }
+
+    // Deletes extra copies of the top-level objects this builder owns, keeping the first.
+    static void RemoveDuplicateRoots()
+    {
+        string[] owned = { "VRKeyboard", "PromptNote", "NoteCreationPanel", "ClapManager", "TourMode", "FootTrashBin" };
+        var seen = new HashSet<string>();
+        foreach (GameObject root in EditorSceneManager.GetActiveScene().GetRootGameObjects())
+        {
+            if (System.Array.IndexOf(owned, root.name) < 0) continue;
+            if (seen.Add(root.name)) continue;
+            Debug.Log($"IP2aSceneBuilder: removing duplicate '{root.name}'.");
+            Object.DestroyImmediate(root);
+        }
+    }
+
+    // Entry point for running the builder without opening the Editor UI:
+    // Unity.exe -batchmode -quit -projectPath <project> -executeMethod IP2aSceneBuilder.BuildFromCommandLine
+    public static void BuildFromCommandLine()
+    {
+        EditorSceneManager.OpenScene("Assets/Scenes/IP2a.unity", OpenSceneMode.Single);
+        Build();
+        LogDuplicateSiblings();
+    }
+
+    // Logs any two objects with the same name under the same parent - a sign of leftover
+    // copies from earlier builder runs.
+    static void LogDuplicateSiblings()
+    {
+        int found = 0;
+        var stack = new Stack<Transform>();
+        foreach (GameObject root in EditorSceneManager.GetActiveScene().GetRootGameObjects()) stack.Push(root.transform);
+        var rootNames = new HashSet<string>();
+        foreach (GameObject root in EditorSceneManager.GetActiveScene().GetRootGameObjects())
+            if (!rootNames.Add(root.name)) { Debug.LogWarning($"IP2aSceneBuilder: duplicate root '{root.name}'"); found++; }
+
+        while (stack.Count > 0)
+        {
+            Transform t = stack.Pop();
+            var names = new HashSet<string>();
+            foreach (Transform child in t)
+            {
+                if (!names.Add(child.name))
+                {
+                    Debug.LogWarning($"IP2aSceneBuilder: duplicate child '{child.name}' under '{GetPath(t)}'");
+                    found++;
+                }
+                stack.Push(child);
+            }
+        }
+        Debug.Log($"IP2aSceneBuilder: duplicate check finished, {found} found.");
+    }
+
+    static string GetPath(Transform t)
+    {
+        string path = t.name;
+        while (t.parent != null) { t = t.parent; path = t.name + "/" + path; }
+        return path;
     }
 
     static GameObject FindOrCreateChild(Transform parent, string name)

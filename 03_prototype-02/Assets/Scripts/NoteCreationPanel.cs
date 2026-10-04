@@ -21,12 +21,16 @@ public class NoteCreationPanel : MonoBehaviour
     public GameObject[] shapeGlowRings;  // each shape button's glow child (shown on hover AND selection)
     public Color[] shapeColors;          // same colors as the buttons - used to tint the text field
 
-    [Header("Note text input")]
-    public TMP_InputField noteTextField;
+    [Header("Note text - pressing the field opens the shared VRKeyboard")]
+    public TMP_Text noteTextDisplay;     // shows the typed text
+    public GameObject notePlaceholder;   // "Type your note..." hint, shown while the text is empty
+    public Graphic noteFieldBackground;  // tinted to match the picked shape
     public Color defaultFieldColor = new Color(245f / 255f, 245f / 255f, 245f / 255f); // #F5F5F5, no shape picked yet
     // NOTE: the note text stays dark/near-black and the placeholder is #929292 so both
     // stay readable against this near-white default AND every shape colour, which are
-    // all light pastels - see BuildTextInputField in IP2aSceneBuilder.cs.
+    // all light pastels - see BuildNoteTextField in IP2aSceneBuilder.cs.
+
+    string noteText = "";
 
     [Header("Media attachment buttons - only clickable once Rectangle is the picked shape")]
     public GameObject[] mediaButtons;    // Add Image, Add Video, Add Document
@@ -64,7 +68,7 @@ public class NoteCreationPanel : MonoBehaviour
         pendingMedia = MediaType.None;
         hoveredShapeIndex = -1;
         HighlightShape(-1); // nothing glows and the field is the default grey until a shape is picked
-        if (noteTextField != null) noteTextField.text = "";
+        SetNoteText("");
 
         Vector3 pos = headTransform.position + headTransform.forward * spawnDistance;
         transform.position = pos;
@@ -75,7 +79,37 @@ public class NoteCreationPanel : MonoBehaviour
 
     public void ClosePanel()
     {
+        if (VRKeyboard.Instance != null) VRKeyboard.Instance.CancelIfOpenedBy(this);
         gameObject.SetActive(false);
+    }
+
+    // Wired to the text field's selectEntered: opens the keyboard pre-filled with the
+    // current text; Confirm writes the result back into the field.
+    public void EditNoteText()
+    {
+        if (VRKeyboard.Instance == null)
+        {
+            Debug.LogWarning("NoteCreationPanel: no VRKeyboard in the scene, can't type a note.");
+            return;
+        }
+        VRKeyboard.Instance.Open(noteText, SetNoteText, this);
+    }
+
+    void SetNoteText(string text)
+    {
+        noteText = text ?? "";
+        if (noteTextDisplay != null) noteTextDisplay.text = noteText;
+        if (notePlaceholder != null) notePlaceholder.SetActive(noteText.Length == 0);
+    }
+
+    // Spawns notes at the panel's distance, turned (yaw only) to face the player, so a
+    // new note is readable whichever way they're facing.
+    void SpawnPose(out Vector3 position, out Quaternion rotation)
+    {
+        position = headTransform.position + headTransform.forward * spawnDistance;
+        Vector3 away = position - headTransform.position;
+        away.y = 0f;
+        rotation = away.sqrMagnitude > 0.0001f ? Quaternion.LookRotation(away) : Quaternion.identity;
     }
 
     // Wired to the red "Discard" button. Same as closing for now - if you later want
@@ -133,12 +167,12 @@ public class NoteCreationPanel : MonoBehaviour
         }
 
         // Text field tints to match the picked shape, grey until one is picked.
-        if (noteTextField != null && noteTextField.targetGraphic != null)
+        if (noteFieldBackground != null)
         {
             Color fieldColor = defaultFieldColor;
             if (selectedShapeIndex >= 0 && shapeColors != null && selectedShapeIndex < shapeColors.Length)
                 fieldColor = shapeColors[selectedShapeIndex];
-            noteTextField.targetGraphic.color = fieldColor;
+            noteFieldBackground.color = fieldColor;
         }
 
         // Add Image / Add Video / Add Document only become clickable for Rectangle notes.
@@ -194,8 +228,8 @@ public class NoteCreationPanel : MonoBehaviour
             return;
         }
 
-        Vector3 spawnPos = headTransform.position + headTransform.forward * spawnDistance;
-        GameObject note = Instantiate(shapePrefabs[index], spawnPos, Quaternion.identity);
+        SpawnPose(out Vector3 spawnPos, out Quaternion spawnRot);
+        GameObject note = Instantiate(shapePrefabs[index], spawnPos, spawnRot);
 
         NoteData data = note.GetComponent<NoteData>();
         if (data != null) data.SetLabel("dummy text");
@@ -212,13 +246,13 @@ public class NoteCreationPanel : MonoBehaviour
             return;
         }
 
-        Vector3 spawnPos = headTransform.position + headTransform.forward * spawnDistance;
-        GameObject note = Instantiate(shapePrefabs[index], spawnPos, Quaternion.identity);
+        SpawnPose(out Vector3 spawnPos, out Quaternion spawnRot);
+        GameObject note = Instantiate(shapePrefabs[index], spawnPos, spawnRot);
 
         NoteData data = note.GetComponent<NoteData>();
         if (data != null)
         {
-            data.SetLabel(noteTextField != null ? noteTextField.text : "");
+            data.SetLabel(noteText);
 
             Sprite placeholder = pendingMedia switch
             {

@@ -94,7 +94,7 @@ public class XRButtonPressRouter : MonoBehaviour
         if (mouse == null || !mouse.leftButton.wasPressedThisFrame) return;
 
         // Leave clicks on screen-space UI (the "TEST: Click to Clap" button) to uGUI.
-        if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject()) return;
+        if (IsOverScreenSpaceUI(mouse.position.ReadValue())) return;
 
         Camera cam = Camera.main;
         if (cam == null) return;
@@ -113,6 +113,23 @@ public class XRButtonPressRouter : MonoBehaviour
                 Press(button, null);
             return;
         }
+    }
+
+    // World-space canvases (note text, Tour menu) shouldn't block clicks on 3D buttons,
+    // so only screen-space overlay UI counts here.
+    readonly List<RaycastResult> uiHits = new List<RaycastResult>();
+
+    bool IsOverScreenSpaceUI(Vector2 screenPos)
+    {
+        if (EventSystem.current == null) return false;
+        uiHits.Clear();
+        EventSystem.current.RaycastAll(new PointerEventData(EventSystem.current) { position = screenPos }, uiHits);
+        foreach (RaycastResult hit in uiHits)
+        {
+            Canvas canvas = hit.gameObject.GetComponentInParent<Canvas>();
+            if (canvas != null && canvas.rootCanvas.renderMode != RenderMode.WorldSpace) return true;
+        }
+        return false;
     }
 #endif
 }
