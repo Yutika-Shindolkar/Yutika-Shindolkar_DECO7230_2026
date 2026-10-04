@@ -118,6 +118,7 @@ public static class IP2aSceneBuilder
     [MenuItem("Tools/IP2a/Build Clap-To-Panel Flow")]
     public static void Build()
     {
+        meshesThisBuild.Clear();
         Directory.CreateDirectory(NotesDir);
 
         int handleLayer = EnsureLayer("Handle");
@@ -1039,13 +1040,15 @@ public static class IP2aSceneBuilder
         // Sibling of MicArm (not its child) so the constraint script can move the head
         // independently of the arm's own rotation.
         GameObject headGO = FindOrCreateChild(mount.transform, "MicHead");
-        for (int c = headGO.transform.childCount - 1; c >= 0; c--)
-            Object.DestroyImmediate(headGO.transform.GetChild(c).gameObject);
         headGO.transform.localPosition = new Vector3(0, 0, armLength);
         headGO.transform.localRotation = Quaternion.identity;
 
+        // The mic model is only placed once. Re-instantiating it on every run gave it new
+        // object IDs (and a new shortened arm mesh) each time, churning the scene file.
+        // To redo it, delete MicHead's child in the scene and run the builder again.
         GameObject micVisualSource = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/mic,fbx.fbx");
-        if (micVisualSource != null)
+        bool micAlreadyPlaced = headGO.transform.childCount > 0;
+        if (micVisualSource != null && !micAlreadyPlaced)
         {
             GameObject micVisual = (GameObject)PrefabUtility.InstantiatePrefab(micVisualSource, headGO.transform);
             // Reverted the Renderer.bounds auto-centring I tried here - it overshot badly
@@ -1103,7 +1106,7 @@ public static class IP2aSceneBuilder
                     shortenedArmMesh.normals = originalArmMesh.normals;
                     shortenedArmMesh.uv = originalArmMesh.uv;
                     shortenedArmMesh.RecalculateBounds();
-                    micArmMf.sharedMesh = shortenedArmMesh; // only this instance - the original FBX asset is untouched
+                    micArmMf.sharedMesh = SaveMeshAsset("MicArmShortened", shortenedArmMesh); // the original FBX asset is untouched
 
                     string axisName = lengthAxis == 0 ? "X" : lengthAxis == 1 ? "Y" : "Z";
                     Debug.Log($"IP2aSceneBuilder: shortened mic model's Object009 to {armShortenFactor * 100f}% of its " +
@@ -1148,7 +1151,7 @@ public static class IP2aSceneBuilder
                     "viewport coords are inside 0..1 now.");
             }
         }
-        else
+        else if (micVisualSource == null)
         {
             Debug.LogWarning("IP2aSceneBuilder: mic model not found at Assets/Models/mic,fbx.fbx, MicHead will have no visual.");
         }
@@ -1406,13 +1409,14 @@ public static class IP2aSceneBuilder
     // point (see the class comment at the top of this file).
     static void SetupFlatShape(GameObject go, Vector2[] outline, float depth, Color color, string materialKeyOverride = null)
     {
+        string safeName = (materialKeyOverride ?? go.name).Replace(" ", "_");
+
         MeshFilter mf = go.GetComponent<MeshFilter>();
         if (mf == null) mf = go.AddComponent<MeshFilter>();
-        mf.sharedMesh = BuildPrismMesh(outline, depth);
+        mf.sharedMesh = SaveMeshAsset(safeName, BuildPrismMesh(outline, depth));
 
         MeshRenderer mr = go.GetComponent<MeshRenderer>();
         if (mr == null) mr = go.AddComponent<MeshRenderer>();
-        string safeName = (materialKeyOverride ?? go.name).Replace(" ", "_");
         mr.sharedMaterial = GetOrCreateUnlitMaterial($"{MaterialsDir}/{safeName}_Mat.mat", color);
 
         go.transform.localScale = Vector3.one;
@@ -1530,6 +1534,61 @@ public static class IP2aSceneBuilder
     }
 
     // ---------- Small helpers ----------
+
+    const string MeshesDir = "Assets/Meshes/Generated";
+
+    // Mesh asset paths handed out during the current Build(), so two objects that share a
+    // name key but have different geometry get separate files instead of overwriting.
+    static readonly Dictionary<string, Mesh> meshesThisBuild = new Dictionary<string, Mesh>();
+
+    // Stores a generated mesh as an asset file and returns the asset. Rebuilding updates
+    // the existing file in place, so the scene and prefabs keep pointing at the same
+    // asset and an unchanged shape produces no diff. (Meshes used to be created fresh
+    // inside the scene on every run, which rewrote thousands of scene lines each time.)
+    static Mesh SaveMeshAsset(string key, Mesh mesh)
+    {
+        Directory.CreateDirectory(MeshesDir);
+
+        string path = $"{MeshesDir}/{key}.asset";
+        for (int n = 2; meshesThisBuild.TryGetValue(path, out Mesh taken); n++)
+        {
+            if (SameGeometry(taken, mesh)) { Object.DestroyImmediate(mesh); return taken; }
+            path = $"{MeshesDir}/{key}_{n}.asset";
+        }
+
+        mesh.name = Path.GetFileNameWithoutExtension(path);
+        Mesh existing = AssetDatabase.LoadAssetAtPath<Mesh>(path);
+        if (existing == null)
+        {
+            AssetDatabase.CreateAsset(mesh, path);
+            existing = mesh;
+        }
+        else
+        {
+            if (!SameGeometry(existing, mesh))
+            {
+                EditorUtility.CopySerialized(mesh, existing);
+                EditorUtility.SetDirty(existing);
+            }
+            Object.DestroyImmediate(mesh);
+        }
+
+        meshesThisBuild[path] = existing;
+        return existing;
+    }
+
+    static bool SameGeometry(Mesh a, Mesh b)
+    {
+        if (a.vertexCount != b.vertexCount) return false;
+        Vector3[] va = a.vertices, vb = b.vertices;
+        for (int i = 0; i < va.Length; i++)
+            if ((va[i] - vb[i]).sqrMagnitude > 1e-12f) return false;
+        int[] ta = a.triangles, tb = b.triangles;
+        if (ta.Length != tb.Length) return false;
+        for (int i = 0; i < ta.Length; i++)
+            if (ta[i] != tb[i]) return false;
+        return true;
+    }
 
     static void RemoveCollider(GameObject go)
     {
