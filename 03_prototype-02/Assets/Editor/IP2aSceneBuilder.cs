@@ -532,6 +532,11 @@ public static class IP2aSceneBuilder
         // room on your hand's release velocity - that's a distraction for a whiteboard
         // note and makes the trash-bin drop (below) unreliable to aim.
         grab.throwOnDetach = false;
+        // An empty colliders list makes XRI claim every child collider for the grab,
+        // including the Handle's - so aiming at the handle grabbed the whole note instead
+        // of starting a connection. List the note's own box only.
+        grab.colliders.Clear();
+        grab.colliders.Add(col);
         note.AddComponent<NoteTrashHandler>();
 
         // Handle child for connecting notes together

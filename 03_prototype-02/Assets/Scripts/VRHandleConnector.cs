@@ -63,20 +63,14 @@ public class VRHandleConnector : MonoBehaviour
     {
         if (currentLine == null) return;
 
-        VRHandleConnector closest = null;
-        float closestDist = snapDistance;
-        Collider[] hits = Physics.OverlapSphere(transform.position, snapDistance, handleLayer);
-        foreach (var hit in hits)
-        {
-            VRHandleConnector hc = hit.GetComponentInParent<VRHandleConnector>();
-            if (hc == null || hc == this) continue;
-            float d = Vector3.Distance(transform.position, hc.transform.position);
-            if (d <= closestDist)
-            {
-                closest = hc;
-                closestDist = d;
-            }
-        }
+        // Look for a target around where the loose end of the line is (the hand that was
+        // dragging it), not around this handle - otherwise only notes already touching
+        // this one could ever be connected. Dropping anywhere on another note, or near its
+        // handle, connects to that note's handle.
+        Vector3 dropPoint = currentLine.followWhilePulling != null
+            ? currentLine.followWhilePulling.position
+            : transform.position;
+        VRHandleConnector closest = FindDropTarget(dropPoint);
 
         if (closest != null)
         {
@@ -99,5 +93,31 @@ public class VRHandleConnector : MonoBehaviour
 
         currentLineObj = null;
         currentLine = null;
+    }
+
+    VRHandleConnector FindDropTarget(Vector3 dropPoint)
+    {
+        Transform ownNote = transform.parent;
+        VRHandleConnector closest = null;
+        float closestDist = snapDistance;
+
+        Collider[] hits = Physics.OverlapSphere(dropPoint, snapDistance, Physics.DefaultRaycastLayers | handleLayer,
+            QueryTriggerInteraction.Collide);
+        foreach (Collider hit in hits)
+        {
+            NoteData note = hit.GetComponentInParent<NoteData>();
+            if (note == null || note.transform == ownNote) continue;
+
+            VRHandleConnector target = note.GetComponentInChildren<VRHandleConnector>();
+            if (target == null) continue;
+
+            float d = Vector3.Distance(dropPoint, hit.ClosestPoint(dropPoint));
+            if (d <= closestDist)
+            {
+                closest = target;
+                closestDist = d;
+            }
+        }
+        return closest;
     }
 }

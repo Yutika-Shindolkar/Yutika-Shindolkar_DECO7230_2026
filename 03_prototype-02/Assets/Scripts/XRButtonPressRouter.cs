@@ -64,7 +64,7 @@ public class XRButtonPressRouter : MonoBehaviour
             // nearest one when the controller is right up against the panel).
             foreach (IXRHoverInteractable hovered in inputInteractor.interactablesHovered)
             {
-                if (hovered is XRSimpleInteractable button && button.isActiveAndEnabled)
+                if (hovered is XRSimpleInteractable button && IsPressable(button))
                 {
                     Press(button, inputInteractor);
                     break;
@@ -72,6 +72,11 @@ public class XRButtonPressRouter : MonoBehaviour
             }
         }
     }
+
+    // Note handles (VRHandleConnector) are press-and-hold: the line follows the hand until
+    // grip is released, so a one-shot click would leave a line dangling. They stay grip-only.
+    public static bool IsPressable(XRSimpleInteractable button) =>
+        button != null && button.isActiveAndEnabled && button.GetComponent<VRHandleConnector>() == null;
 
     void Press(XRSimpleInteractable button, IXRSelectInteractor interactor)
     {
@@ -109,7 +114,7 @@ public class XRButtonPressRouter : MonoBehaviour
         {
             XRBaseInteractable interactable = hit.collider.GetComponentInParent<XRBaseInteractable>();
             if (interactable == null) continue;
-            if (interactable is XRSimpleInteractable button && button.isActiveAndEnabled)
+            if (interactable is XRSimpleInteractable button && IsPressable(button))
                 Press(button, null);
             return;
         }
