@@ -5,8 +5,10 @@ using UnityEditor;
 using UnityEditor.Events;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using UnityEngine.XR.Interaction.Toolkit.Interactables;
+using UnityEngine.XR.Interaction.Toolkit.UI;
 using TMPro;
 
 // One-shot build tool for the clap -> prompt -> note-creation-panel loop.
@@ -140,6 +142,7 @@ public static class IP2aSceneBuilder
         // Earlier runs of this builder left duplicate copies of some objects behind
         // (FindOrCreate used to miss inactive ones). Clear those out first.
         RemoveDuplicateRoots();
+        EnsureXRUIEventSystem();
 
         Material lineMat = GetOrCreateUnlitMaterial(MaterialsDir + "/ConnectionLine_Mat.mat", new Color(0.15f, 0.15f, 0.15f));
         GameObject linePrefab = BuildConnectionLinePrefab(lineMat);
@@ -161,7 +164,7 @@ public static class IP2aSceneBuilder
             notePrefabs[i] = BuildNotePrefab(shapeNames[i], shapeColors[i], (NoteShape)i, handleLayer, linePrefab, labelPrefab);
 
         // --- Delete (foot-level trash bin) ---
-        BuildTrashBin(rig);
+        BuildTrashBin(rig, head);
 
         // --- Prompt note ---
         GameObject promptNoteGO = FindOrCreate("PromptNote");
@@ -465,8 +468,12 @@ public static class IP2aSceneBuilder
         Vector2[] outline = GetShapeOutline(shape, noteSize);
         GetTextSafeRect(shape, noteSize, out float safeWidth, out float safeHeight, out float safeCenterY);
 
+        // Kinematic: a released note stays exactly where it was let go and never pushes
+        // other notes around (a new note spawning on top of an old one used to shove it).
+        // XRGrabInteractable drives it while held and restores this on release.
         Rigidbody rb = note.AddComponent<Rigidbody>();
         rb.useGravity = false;
+        rb.isKinematic = true;
         rb.linearDamping = 4f;
         rb.angularDamping = 4f;
 
@@ -533,6 +540,9 @@ public static class IP2aSceneBuilder
         // room on your hand's release velocity - that's a distraction for a whiteboard
         // note and makes the trash-bin drop (below) unreliable to aim.
         grab.throwOnDetach = false;
+        // Grabbed with the ray from a distance, a note stays out at the end of the ray and
+        // moves with it, like dragging on a whiteboard, instead of flying into your hand.
+        grab.farAttachMode = UnityEngine.XR.Interaction.Toolkit.Attachment.InteractableFarAttachMode.Far;
         // An empty colliders list makes XRI claim every child collider for the grab,
         // including the Handle's - so aiming at the handle grabbed the whole note instead
         // of starting a connection. List the note's own box only.
@@ -840,7 +850,10 @@ public static class IP2aSceneBuilder
         RectTransform menuRect = menuGO.GetComponent<RectTransform>();
         menuRect.sizeDelta = new Vector2(0.20f / TextCanvasScale, 0.26f / TextCanvasScale);
         if (menuGO.GetComponent<CanvasRenderer>() == null) menuGO.AddComponent<CanvasRenderer>();
+        // GraphicRaycaster handles the Editor mouse; TrackedDeviceGraphicRaycaster lets
+        // controller rays and pokes hit the list buttons (with XRUIInputModule).
         if (menuGO.GetComponent<GraphicRaycaster>() == null) menuGO.AddComponent<GraphicRaycaster>();
+        if (menuGO.GetComponent<TrackedDeviceGraphicRaycaster>() == null) menuGO.AddComponent<TrackedDeviceGraphicRaycaster>();
 
         GameObject menuBg = FindOrCreateChild(menuGO.transform, "Background");
         RectTransform menuBgRect = menuBg.GetComponent<RectTransform>();
@@ -1184,7 +1197,7 @@ public static class IP2aSceneBuilder
     // dustbin model Yutika will bring in later: FootTrashBin only reads this object's own
     // Renderer/Collider/Transform, so swapping the visual later (new mesh, same
     // GameObject and components) won't need any script changes.
-    static void BuildTrashBin(GameObject rig)
+    static void BuildTrashBin(GameObject rig, Transform head)
     {
         GameObject bin = FindOrCreate("FootTrashBin");
         SetupFlatShape(bin, RectOutline(0.35f, 0.35f), 0.02f, new Color(0.75f, 0.35f, 0.35f), "FootTrashBin");
@@ -1196,6 +1209,7 @@ public static class IP2aSceneBuilder
         FootTrashBin trashBin = bin.GetComponent<FootTrashBin>();
         if (trashBin == null) trashBin = bin.AddComponent<FootTrashBin>();
         trashBin.playerRoot = rig.transform; // XR Origin's own root = floor-level position (Tracking Origin Mode: Floor)
+        trashBin.headTransform = head;       // follows where the player stands, not the rig's origin
         trashBin.footOffsetY = 0.01f; // just proud of the floor plane, avoids z-fighting
     }
 
@@ -1650,6 +1664,20 @@ public static class IP2aSceneBuilder
         GameObject go = FindRoot(name);
         if (go == null) go = new GameObject(name);
         return go;
+    }
+
+    // World-space uGUI (the Tour Mode list) only receives XR controller rays and pokes
+    // through XRI's XRUIInputModule; the Input System's own UI module ignores them.
+    // XRUIInputModule still handles the mouse, so the screen-space test button keeps working.
+    static void EnsureXRUIEventSystem()
+    {
+        EventSystem eventSystem = Object.FindFirstObjectByType<EventSystem>(FindObjectsInactive.Include);
+        if (eventSystem == null) eventSystem = new GameObject("EventSystem").AddComponent<EventSystem>();
+        GameObject esGO = eventSystem.gameObject;
+
+        foreach (BaseInputModule module in esGO.GetComponents<BaseInputModule>())
+            if (!(module is XRUIInputModule)) Object.DestroyImmediate(module);
+        if (esGO.GetComponent<XRUIInputModule>() == null) esGO.AddComponent<XRUIInputModule>();
     }
 
     // Deletes extra copies of the top-level objects this builder owns, keeping the first.

@@ -2,6 +2,7 @@ using UnityEngine;
 
 // Draws the curved thread between two notes. While being pulled (pointB is null),
 // the loose end follows whichever controller/hand transform is currently dragging it.
+// Deleting a note removes its lines (see NoteData.OnDestroy).
 public class ConnectionLine : MonoBehaviour
 {
     public Transform pointA;

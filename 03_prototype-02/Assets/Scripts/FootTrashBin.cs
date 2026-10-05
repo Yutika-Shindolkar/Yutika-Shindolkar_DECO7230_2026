@@ -6,7 +6,8 @@ public class FootTrashBin : MonoBehaviour
 {
     public static FootTrashBin Instance;
 
-    public Transform playerRoot;      // XR Origin, used to track the player's feet
+    public Transform playerRoot;      // XR Origin: its height is the floor (Tracking Origin Mode: Floor)
+    public Transform headTransform;   // the VR camera: where the player is actually standing
     public float footOffsetY = 0f;    // tweak if the bin should sit slightly above/below the floor
 
     Renderer[] renderers;
@@ -24,14 +25,22 @@ public class FootTrashBin : MonoBehaviour
     void Update()
     {
         if (activeHolds <= 0 || playerRoot == null) return;
-        Vector3 pos = playerRoot.position;
-        pos.y += footOffsetY;
-        transform.position = pos;
+        transform.position = FeetPosition();
+    }
+
+    // Under the player's head at floor height. With room-scale the player walks around
+    // inside the rig, so the rig's own origin is often not where they're standing.
+    Vector3 FeetPosition()
+    {
+        Vector3 pos = headTransform != null ? headTransform.position : playerRoot.position;
+        pos.y = playerRoot.position.y + footOffsetY;
+        return pos;
     }
 
     public void RegisterHoldStart()
     {
         activeHolds++;
+        if (playerRoot != null) transform.position = FeetPosition();
         SetVisible(true);
     }
 

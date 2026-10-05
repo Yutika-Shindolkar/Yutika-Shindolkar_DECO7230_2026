@@ -28,4 +28,20 @@ public class NoteData : MonoBehaviour
     {
         if (noteText != null) noteText.text = text;
     }
+
+    // When a note is deleted (e.g. dropped in the trash bin), take its connection lines
+    // (and their labels, which are children of the line) with it, and drop it from Tour
+    // Mode's list. Skipped while the scene itself is unloading.
+    void OnDestroy()
+    {
+        TourManager.tourPath.Remove(transform);
+        if (!gameObject.scene.isLoaded) return;
+
+        foreach (ConnectionLine line in FindObjectsByType<ConnectionLine>(FindObjectsSortMode.None))
+        {
+            bool attached = (line.pointA != null && line.pointA.IsChildOf(transform))
+                || (line.pointB != null && line.pointB.IsChildOf(transform));
+            if (attached) Destroy(line.gameObject);
+        }
+    }
 }
