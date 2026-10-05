@@ -1,11 +1,12 @@
 using UnityEngine;
 using TMPro;
 
-// Single reusable world-space poke keyboard - IP2a's one piece of real free-text entry,
-// built once by IP2aSceneBuilder.BuildKeyboard() and shared by every connection label
-// rather than spawned per-connection. Callers (VRPlusButtonClick, VRLabelEdit) just call
-// Open() with the TMP_Text they want typed into; VRKeyboardKey pokes call back into
-// TypeChar/Backspace/Confirm.
+// Single reusable world-space keyboard - IP2a's free-text entry, built once by
+// IP2aSceneBuilder.BuildKeyboard() and shared by the note panel and every connection
+// label rather than spawned per use. Connection labels (VRPlusButtonClick, VRLabelEdit)
+// call Open() with the TMP_Text they want typed into; the note panel uses the callback
+// overload. VRKeyboardKey presses (trigger, poke or Editor mouse click) call back into
+// TypeChar/Backspace/Confirm/Cancel.
 public class VRKeyboard : MonoBehaviour
 {
     public static VRKeyboard Instance { get; private set; }

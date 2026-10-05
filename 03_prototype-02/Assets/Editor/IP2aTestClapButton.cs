@@ -54,15 +54,13 @@ public static class IP2aTestClapButton
         // (usually auto-created by Unity when a Canvas needs one, but don't
         // rely on that silently - create it explicitly so this works even if
         // this is the first Canvas ever added to the scene).
+        // XRUIInputModule (not the Input System's UI module) so the same EventSystem also
+        // serves controller rays on world-space UI - matches IP2aSceneBuilder.
         if (Object.FindFirstObjectByType<EventSystem>() == null)
         {
             GameObject esGO = new GameObject("EventSystem");
             esGO.AddComponent<EventSystem>();
-#if ENABLE_INPUT_SYSTEM
-            esGO.AddComponent<UnityEngine.InputSystem.UI.InputSystemUIInputModule>();
-#else
-            esGO.AddComponent<StandaloneInputModule>();
-#endif
+            esGO.AddComponent<UnityEngine.XR.Interaction.Toolkit.UI.XRUIInputModule>();
         }
 
         // --- Button ---

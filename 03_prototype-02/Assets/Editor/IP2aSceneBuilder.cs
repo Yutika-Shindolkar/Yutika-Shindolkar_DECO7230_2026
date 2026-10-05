@@ -1452,16 +1452,13 @@ public static class IP2aSceneBuilder
         SetupFlatShape(go, RoundedRectOutline(width, height, cornerRadius, 8), depth, color, materialKeyOverride);
     }
 
-    // World-space TMP_InputField, sized in real metres via the canvas's own scale rather
-    // than by scaling a UI RectTransform. Text is kept dark/near-black so it stays
-    // readable against both bgColor and every shape colour it gets re-tinted to at
-    // runtime (see NoteCreationPanel.HighlightShape) - all the shape colours are light
-    // pastels, so dark text always has enough contrast. Typing is via a physical
-    // keyboard for now (no on-screen keyboard wired up).
     // A tap-to-type text field: a world-space canvas showing the text (or a placeholder),
     // plus a collider and XRSimpleInteractable so a trigger press, poke or Editor mouse
     // click opens the shared VRKeyboard. It used to be a uGUI TMP_InputField, which can't
     // receive XR input in this setup and would only have offered a desktop keyboard.
+    // Sized in real metres via the canvas's own scale rather than by scaling a UI
+    // RectTransform. Text stays dark/near-black so it's readable against bgColor and
+    // every (light pastel) shape colour it's re-tinted to at runtime.
     static void BuildNoteTextField(Transform parent, string name, Vector3 localPos, Vector2 worldSize, Color bgColor,
         NoteCreationPanel panel, out TMP_Text textDisplay, out GameObject placeholderObject, out Image background)
     {
