@@ -129,3 +129,6 @@ ________________________________________________
 
 5. How did Tour Mode's wrist menu compare to the idea of walking through your connected ideas instead of scrolling? Did jumping between notes from a list make sense?
    ________________________________________________
+
+6. How did being in the open, borderless canvas make you feel while you were moving around in it, comfortable, disoriented, uneasy, or anything like nausea?
+   ________________________________________________

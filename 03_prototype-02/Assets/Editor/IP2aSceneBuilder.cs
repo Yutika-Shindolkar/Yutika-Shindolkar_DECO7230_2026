@@ -143,6 +143,7 @@ public static class IP2aSceneBuilder
         // (FindOrCreate used to miss inactive ones). Clear those out first.
         RemoveDuplicateRoots();
         EnsureXRUIEventSystem();
+        DisableRigJump(rig);
 
         Material lineMat = GetOrCreateUnlitMaterial(MaterialsDir + "/ConnectionLine_Mat.mat", new Color(0.15f, 0.15f, 0.15f));
         GameObject linePrefab = BuildConnectionLinePrefab(lineMat);
@@ -319,6 +320,16 @@ public static class IP2aSceneBuilder
         // re-tints them active/inactive/selected to match). mediaTypeValues here is the
         // MediaType enum's int value for each slot (Image=1, Video=3, Document=2 - NOT the
         // row position 0/1/2), since that's what NoteCreationPanel.SetPendingMedia expects.
+        // Media button colours (also written to NoteCreationPanel below, which re-tints at
+        // runtime). With flat unlit materials on a white card: barely-there grey with pale
+        // text = unavailable, solid mid-grey with dark text = available, terracotta with
+        // white text = chosen.
+        Color mediaBgInactive = new Color(0.93f, 0.93f, 0.93f);
+        Color mediaBgActive = new Color(0.78f, 0.78f, 0.78f);
+        Color mediaBgSelected = new Color(0.90f, 0.55f, 0.45f);
+        Color mediaLabelInactive = new Color(0.62f, 0.62f, 0.62f);
+        Color mediaLabelActive = new Color(0.12f, 0.12f, 0.12f);
+
         string[] mediaLabels = { "Add Image", "Add Video", "Add Document" };
         int[] mediaTypeValues = { (int)MediaType.Image, (int)MediaType.Video, (int)MediaType.Document };
         float[] mediaX = { -0.205f, 0f, 0.205f };
@@ -328,7 +339,7 @@ public static class IP2aSceneBuilder
             string key = mediaLabels[i].Replace(" ", "") + "Button";
             GameObject btn = FindOrCreateChild(panelGO.transform, key);
             SetupRoundedRect(btn, mediaButtonWidth, mediaButtonHeight, mediaButtonRadius,
-                0.012f, new Color(0.82f, 0.82f, 0.82f), key);
+                0.012f, mediaBgInactive, key);
             btn.transform.localPosition = new Vector3(mediaX[i], mediaRowY, -0.02f);
 
             XRSimpleInteractable mediaInteractable = btn.GetComponent<XRSimpleInteractable>();
@@ -342,7 +353,7 @@ public static class IP2aSceneBuilder
             labelText.text = mediaLabels[i];
             labelText.fontSize = 6f; // was 3.2 - same fix as the shape labels
             labelText.alignment = TextAlignmentOptions.Center;
-            labelText.color = new Color(0.15f, 0.15f, 0.15f); // was 0.5 (too light) - matches the shape labels' contrast
+            labelText.color = mediaLabelInactive; // starts unavailable until Rectangle is picked
             label.transform.localPosition = new Vector3(0, 0, -0.01f);
             label.transform.localScale = Vector3.one * 0.03f;
 
@@ -427,6 +438,13 @@ public static class IP2aSceneBuilder
         so.FindProperty("notePlaceholder").objectReferenceValue = notePlaceholder;
         so.FindProperty("noteFieldBackground").objectReferenceValue = noteFieldBackground;
         so.FindProperty("defaultFieldColor").colorValue = new Color(245f / 255f, 245f / 255f, 245f / 255f);
+
+        so.FindProperty("mediaBgInactive").colorValue = mediaBgInactive;
+        so.FindProperty("mediaBgActive").colorValue = mediaBgActive;
+        so.FindProperty("mediaBgSelected").colorValue = mediaBgSelected;
+        so.FindProperty("mediaInactiveColor").colorValue = mediaLabelInactive;
+        so.FindProperty("mediaActiveColor").colorValue = mediaLabelActive;
+        so.FindProperty("mediaSelectedColor").colorValue = Color.white;
 
         SerializedProperty mediaButtonsProp = so.FindProperty("mediaButtons");
         mediaButtonsProp.arraySize = 3;
@@ -553,7 +571,9 @@ public static class IP2aSceneBuilder
         // Handle child for connecting notes together
         GameObject handle = new GameObject("Handle");
         handle.transform.SetParent(note.transform, false);
-        handle.layer = handleLayer;
+        // Default layer, not "Handle": the XRI starter controllers' ray and near casts only
+        // look at Default/UI layers, so a handle on its own layer could never be grabbed.
+        handle.layer = 0;
         handle.transform.localPosition = new Vector3(noteSize * 0.55f, -noteSize * 0.4f, 0f);
         BoxCollider handleCol = handle.AddComponent<BoxCollider>();
         handleCol.size = Vector3.one * 0.03f;
@@ -1607,16 +1627,27 @@ public static class IP2aSceneBuilder
         if (c != null) Object.DestroyImmediate(c);
     }
 
+    // Flat, unlit colour: every face of a button, key or note shows exactly `color`.
+    // These used to be URP Lit despite the name, so the scene light made top edges glow
+    // white (the "white bar" above the media buttons) and pale buttons vanish against the
+    // white panel. Existing materials are switched over and recoloured in place.
     static Material GetOrCreateUnlitMaterial(string path, Color color)
     {
-        Material existing = AssetDatabase.LoadAssetAtPath<Material>(path);
-        if (existing != null) return existing;
+        Shader unlit = Shader.Find("Universal Render Pipeline/Unlit");
+        Material mat = AssetDatabase.LoadAssetAtPath<Material>(path);
+        if (mat == null)
+        {
+            mat = new Material(unlit) { color = color };
+            AssetDatabase.CreateAsset(mat, path);
+            return mat;
+        }
 
-        Shader shader = Shader.Find("Universal Render Pipeline/Lit");
-        Material mat = new Material(shader);
-        mat.color = color;
-        if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", 0.1f);
-        AssetDatabase.CreateAsset(mat, path);
+        if (mat.shader != unlit || mat.color != color)
+        {
+            mat.shader = unlit;
+            mat.color = color;
+            EditorUtility.SetDirty(mat);
+        }
         return mat;
     }
 
@@ -1661,6 +1692,21 @@ public static class IP2aSceneBuilder
         GameObject go = FindRoot(name);
         if (go == null) go = new GameObject(name);
         return go;
+    }
+
+    // The XRI starter rig's Jump is on the right controller's A button. With the rig's
+    // gravity off, a jump never comes back down, and the player floats far above the
+    // floor. A whiteboard doesn't need jumping (and A is the dev spawn-note button), so
+    // switch the Jump locomotion object off in this scene's copy of the rig.
+    static void DisableRigJump(GameObject rig)
+    {
+        foreach (Transform t in rig.GetComponentsInChildren<Transform>(true))
+        {
+            if (t.name != "Jump") continue;
+            t.gameObject.SetActive(false);
+            return;
+        }
+        Debug.LogWarning("IP2aSceneBuilder: no 'Jump' object found under the XR rig.");
     }
 
     // World-space uGUI (the Tour Mode list) only receives XR controller rays and pokes

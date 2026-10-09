@@ -34,11 +34,12 @@ public class NoteCreationPanel : MonoBehaviour
 
     [Header("Media attachment buttons - only clickable once Rectangle is the picked shape")]
     public GameObject[] mediaButtons;    // Add Image, Add Video, Add Document
-    public Color mediaActiveColor = new Color(0.15f, 0.15f, 0.15f);   // label, active + not the chosen one
-    public Color mediaInactiveColor = new Color(0.65f, 0.65f, 0.65f); // label, not clickable yet
+    // Values set by IP2aSceneBuilder; these defaults match it.
+    public Color mediaActiveColor = new Color(0.12f, 0.12f, 0.12f);   // label, active + not the chosen one
+    public Color mediaInactiveColor = new Color(0.62f, 0.62f, 0.62f); // label, not clickable yet
     public Color mediaSelectedColor = Color.white;                     // label, this is the chosen media type
-    public Color mediaBgInactive = new Color(0.82f, 0.82f, 0.82f);
-    public Color mediaBgActive = new Color(0.92f, 0.92f, 0.92f);
+    public Color mediaBgInactive = new Color(0.93f, 0.93f, 0.93f);   // barely-there grey: unavailable
+    public Color mediaBgActive = new Color(0.78f, 0.78f, 0.78f);     // solid grey: available
     public Color mediaBgSelected = new Color(0.90f, 0.55f, 0.45f); // matches the Rectangle shape's own accent
 
     [Header("Placeholder media sprites")]
@@ -160,7 +161,11 @@ public class NoteCreationPanel : MonoBehaviour
                 bool selected = i == selectedShapeIndex;
                 bool hovered = i == hoveredShapeIndex;
                 if (shapeButtons[i] != null)
-                    shapeButtons[i].localScale = Vector3.one * (selected ? 1.18f : hovered ? 1.08f : 1f);
+                {
+                    float scale = selected ? 1.18f : hovered ? 1.08f : 1f;
+                    shapeButtons[i].localScale = Vector3.one * scale;
+                    KeepLabelSteady(i, scale);
+                }
                 if (shapeGlowRings != null && i < shapeGlowRings.Length && shapeGlowRings[i] != null)
                     shapeGlowRings[i].SetActive(selected || hovered);
             }
@@ -177,6 +182,30 @@ public class NoteCreationPanel : MonoBehaviour
 
         // Add Image / Add Video / Add Document only become clickable for Rectangle notes.
         RefreshMediaVisuals(selectedShapeIndex == (int)NoteShape.Rectangle);
+    }
+
+    // Only the shape should grow when picked/hovered. Its name label is a child, so undo
+    // the scale on it - otherwise "Rectangle" grew and slid down into the text field.
+    Vector3[] labelBaseScale;
+    Vector3[] labelBasePos;
+
+    void KeepLabelSteady(int i, float buttonScale)
+    {
+        Transform label = shapeButtons[i].Find("Label");
+        if (label == null) return;
+
+        if (labelBaseScale == null)
+        {
+            labelBaseScale = new Vector3[shapeButtons.Length];
+            labelBasePos = new Vector3[shapeButtons.Length];
+        }
+        if (labelBaseScale[i] == Vector3.zero)
+        {
+            labelBaseScale[i] = label.localScale; // first call happens with the button at scale 1
+            labelBasePos[i] = label.localPosition;
+        }
+        label.localScale = labelBaseScale[i] / buttonScale;
+        label.localPosition = labelBasePos[i] / buttonScale;
     }
 
     void RefreshMediaVisuals(bool active)

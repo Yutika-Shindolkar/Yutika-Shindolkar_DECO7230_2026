@@ -592,7 +592,7 @@ MonoBehaviour:
   m_fontColor32:
     serializedVersion: 2
     rgba: 4280690214
-  m_fontColor: {r: 0.15, g: 0.15, b: 0.15, a: 1}
+  m_fontColor: {r: 0.62, g: 0.62, b: 0.62, a: 1}
   m_enableVertexGradient: 0
   m_colorMode: 3
   m_fontColorGradient:
@@ -1338,7 +1338,7 @@ MonoBehaviour:
   m_fontColor32:
     serializedVersion: 2
     rgba: 4280690214
-  m_fontColor: {r: 0.15, g: 0.15, b: 0.15, a: 1}
+  m_fontColor: {r: 0.62, g: 0.62, b: 0.62, a: 1}
   m_enableVertexGradient: 0
   m_colorMode: 3
   m_fontColorGradient:
@@ -4321,6 +4321,10 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 1717954561962503726, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
       propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3904471525139099824, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
+      propertyPath: m_IsActive
       value: 0
       objectReference: {fileID: 0}
     m_RemovedComponents: []
@@ -14681,11 +14685,11 @@ MonoBehaviour:
   - {fileID: 257719732}
   - {fileID: 1973528967}
   - {fileID: 493731465}
-  mediaActiveColor: {r: 0.15, g: 0.15, b: 0.15, a: 1}
-  mediaInactiveColor: {r: 0.78, g: 0.78, b: 0.78, a: 1}
+  mediaActiveColor: {r: 0.12, g: 0.12, b: 0.12, a: 1}
+  mediaInactiveColor: {r: 0.62, g: 0.62, b: 0.62, a: 1}
   mediaSelectedColor: {r: 1, g: 1, b: 1, a: 1}
-  mediaBgInactive: {r: 0.82, g: 0.82, b: 0.82, a: 1}
-  mediaBgActive: {r: 0.92, g: 0.92, b: 0.92, a: 1}
+  mediaBgInactive: {r: 0.93, g: 0.93, b: 0.93, a: 1}
+  mediaBgActive: {r: 0.78, g: 0.78, b: 0.78, a: 1}
   mediaBgSelected: {r: 0.9, g: 0.55, b: 0.45, a: 1}
   imagePlaceholder: {fileID: 0}
   documentPlaceholder: {fileID: 0}
@@ -18792,7 +18796,7 @@ MonoBehaviour:
   m_fontColor32:
     serializedVersion: 2
     rgba: 4280690214
-  m_fontColor: {r: 0.15, g: 0.15, b: 0.15, a: 1}
+  m_fontColor: {r: 0.62, g: 0.62, b: 0.62, a: 1}
   m_enableVertexGradient: 0
   m_colorMode: 3
   m_fontColorGradient:
