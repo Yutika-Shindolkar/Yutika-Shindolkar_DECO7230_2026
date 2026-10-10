@@ -47,6 +47,48 @@ public class IP2aSnapshots
         yield return new ExitPlayMode();
     }
 
+    [UnityTest]
+    public IEnumerator NotesWithLabelledConnection()
+    {
+        EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+        yield return new EnterPlayMode();
+        yield return null;
+
+        NoteCreationPanel panel = Object.FindFirstObjectByType<NoteCreationPanel>(FindObjectsInactive.Include);
+        Object.FindFirstObjectByType<PromptNote>()?.Hide();
+        Camera cam = panel.headTransform.GetComponent<Camera>();
+
+        panel.CreateTestNote();
+        NoteData shortNote = Object.FindObjectsByType<NoteData>(FindObjectsSortMode.None)[0];
+        shortNote.SetLabel("hi");
+        shortNote.transform.position += panel.headTransform.right * -0.45f;
+
+        panel.CreateTestNote();
+        NoteData longNote = null;
+        foreach (NoteData n in Object.FindObjectsByType<NoteData>(FindObjectsSortMode.None))
+            if (n != shortNote) longNote = n;
+        longNote.SetLabel("This is a longer note, the kind of thing someone writes to capture a whole idea at once.");
+        longNote.transform.position += panel.headTransform.right * 0.45f;
+
+        // Connect them and label the connection, the same way the handles do.
+        VRHandleConnector from = shortNote.GetComponentInChildren<VRHandleConnector>();
+        VRHandleConnector to = longNote.GetComponentInChildren<VRHandleConnector>();
+        ConnectionLine line = Object.Instantiate(from.linePrefab).GetComponent<ConnectionLine>();
+        line.pointA = from.transform;
+        line.pointB = to.transform;
+        GameObject label = Object.Instantiate(from.labelPrefab, line.transform);
+        label.GetComponent<LineLabelFollow>().line = line.GetComponent<LineRenderer>();
+        label.GetComponentInChildren<VRPlusButtonClick>(true).gameObject.SetActive(false);
+        TMPro.TMP_Text labelText = label.GetComponentInChildren<VRLabelEdit>(true).GetComponent<TMPro.TMP_Text>();
+        labelText.gameObject.SetActive(true);
+        labelText.text = "leads to";
+        yield return null;
+        yield return null;
+
+        Save(cam, "notes_and_label.png");
+        yield return new ExitPlayMode();
+    }
+
     static void Save(Camera cam, string fileName)
     {
         const int width = 1280, height = 960;

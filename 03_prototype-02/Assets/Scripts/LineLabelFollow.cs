@@ -21,6 +21,10 @@ public class LineLabelFollow : MonoBehaviour
 
         if (cam == null) return;
 
+        // Sit 2 cm toward the viewer, so the label's white background covers the line
+        // where they cross instead of the line cutting through the text.
+        transform.position = midPoint + (cam.transform.position - midPoint).normalized * 0.02f;
+
         Vector3 startWorld = line.GetPosition(0);
         Vector3 endWorld = line.GetPosition(line.positionCount - 1);
 

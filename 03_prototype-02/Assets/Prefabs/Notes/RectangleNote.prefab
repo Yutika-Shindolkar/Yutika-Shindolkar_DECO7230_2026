@@ -103,6 +103,9 @@ MonoBehaviour:
   noteText: {fileID: 292506252164461525}
   attachedMedia: 0
   mediaThumbnail: {fileID: 3664633831736421334}
+  textFontSize: 20
+  maxScale: 2.2
+  minFontSize: 6
 --- !u!114 &3599191942573787494
 MonoBehaviour:
   m_ObjectHideFlags: 0

@@ -628,11 +628,21 @@ public static class IP2aSceneBuilder
         return prefab;
     }
 
+    // Connection label text size: matches the letters inside notes (about 2.2 cm), as
+    // measured by IP2aNoteTextTests. The label's root is scaled 0.03 and 3D TextMeshPro
+    // sizes differently from the notes' canvas text, hence the odd-looking number.
+    const float ConnectionLabelFontSize = 6.6f;
+    static readonly Vector3 ConnectionLabelColliderSize = new Vector3(6f, 2.5f, 0.5f); // pressable area, sized for the bigger text
+
     static GameObject BuildConnectionLabelPrefab()
     {
         string path = $"{PrefabDir}/ConnectionLabelPrefab.prefab";
         GameObject existing = AssetDatabase.LoadAssetAtPath<GameObject>(path);
-        if (existing != null) return existing;
+        if (existing != null)
+        {
+            UpdateConnectionLabelPrefab(path);
+            return AssetDatabase.LoadAssetAtPath<GameObject>(path);
+        }
 
         // Root just carries LineLabelFollow (keeps the whole thing positioned/rotated to
         // the connection's midpoint, "text parallel to the line" - see LineLabelFollow.cs)
@@ -689,13 +699,14 @@ public static class IP2aSceneBuilder
         labelGO.transform.SetParent(go.transform, false);
         TextMeshPro text = labelGO.AddComponent<TextMeshPro>();
         text.text = "Related to";
-        text.fontSize = 3f;
+        text.fontSize = ConnectionLabelFontSize;
         text.alignment = TextAlignmentOptions.Center;
         text.color = Color.black;
         BoxCollider col = labelGO.AddComponent<BoxCollider>();
-        col.size = new Vector3(3f, 1.5f, 0.5f);
+        col.size = ConnectionLabelColliderSize;
         labelGO.AddComponent<XRSimpleInteractable>();
         labelGO.AddComponent<VRLabelEdit>().targetText = text;
+        AddLabelBackground(labelGO, text);
         labelGO.SetActive(false);
 
         VRPlusButtonClick plusClick = plusGO.AddComponent<VRPlusButtonClick>();
@@ -705,6 +716,54 @@ public static class IP2aSceneBuilder
         GameObject prefab = PrefabUtility.SaveAsPrefabAsset(go, path);
         Object.DestroyImmediate(go);
         return prefab;
+    }
+
+    // Applies label size changes to an already-built label prefab. Saves only when
+    // something differs, so re-running the builder doesn't touch the file.
+    static void UpdateConnectionLabelPrefab(string path)
+    {
+        GameObject root = PrefabUtility.LoadPrefabContents(path);
+        Transform labelGO = root.transform.Find("LabelText");
+        bool changed = false;
+        if (labelGO != null)
+        {
+            TextMeshPro text = labelGO.GetComponent<TextMeshPro>();
+            if (text != null && !Mathf.Approximately(text.fontSize, ConnectionLabelFontSize))
+            {
+                text.fontSize = ConnectionLabelFontSize;
+                changed = true;
+            }
+            BoxCollider col = labelGO.GetComponent<BoxCollider>();
+            if (col != null && col.size != ConnectionLabelColliderSize)
+            {
+                col.size = ConnectionLabelColliderSize;
+                changed = true;
+            }
+            if (labelGO.Find("LabelBackground") == null)
+            {
+                AddLabelBackground(labelGO.gameObject, text);
+                changed = true;
+            }
+        }
+        if (changed) PrefabUtility.SaveAsPrefabAsset(root, path);
+        PrefabUtility.UnloadPrefabContents(root);
+    }
+
+    // White rounded-off backing for a connection label, kept fitted to the text by
+    // LabelBackgroundFit (see LabelBackgroundFit.cs). A plain quad: flat and unlit.
+    static void AddLabelBackground(GameObject labelGO, TMP_Text text)
+    {
+        GameObject bg = GameObject.CreatePrimitive(PrimitiveType.Quad);
+        bg.name = "LabelBackground";
+        Object.DestroyImmediate(bg.GetComponent<Collider>());
+        bg.transform.SetParent(labelGO.transform, false);
+        bg.transform.localPosition = new Vector3(0f, 0f, 0.05f);
+        bg.GetComponent<Renderer>().sharedMaterial = GetOrCreateUnlitMaterial($"{MaterialsDir}/LabelBackground_Mat.mat", Color.white);
+
+        LabelBackgroundFit fit = labelGO.GetComponent<LabelBackgroundFit>();
+        if (fit == null) fit = labelGO.AddComponent<LabelBackgroundFit>();
+        fit.text = text;
+        fit.background = bg.transform;
     }
 
     // Single reusable world-space poke keyboard (see VRKeyboard.cs) - IP2a's one piece of
