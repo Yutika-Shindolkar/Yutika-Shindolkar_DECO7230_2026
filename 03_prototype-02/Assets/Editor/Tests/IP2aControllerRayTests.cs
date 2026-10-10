@@ -66,6 +66,91 @@ public class IP2aControllerRayTests
         yield return new ExitPlayMode();
     }
 
+    // Miro-style connector with the real controller ray: grip a handle, point the ray at
+    // another note (the loose end snaps to it and it glows), let go to connect; letting go
+    // over empty space cancels.
+    [UnityTest]
+    public IEnumerator RayDragsConnectorFromHandleToAnotherNote()
+    {
+        EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+        yield return new EnterPlayMode();
+        yield return null;
+
+        NoteCreationPanel panel = Object.FindFirstObjectByType<NoteCreationPanel>(FindObjectsInactive.Include);
+        GameObject rig = GameObject.Find("XR Origin (XR Rig)");
+        Transform right = rig.transform.Find("Camera Offset/Right Controller");
+        right.gameObject.SetActive(true);
+        foreach (Behaviour beh in right.GetComponents<Behaviour>())
+            if (beh.GetType().Name.Contains("TrackedPoseDriver")) beh.enabled = false;
+        NearFarInteractor nearFar = right.GetComponentInChildren<NearFarInteractor>(true);
+        nearFar.selectInput.inputSourceMode = UnityEngine.XR.Interaction.Toolkit.Inputs.Readers.XRInputButtonReader.InputSourceMode.ManualValue;
+
+        // No lambdas capturing locals here: Play mode's domain reload would null them.
+        panel.CreateTestNote();
+        NoteData a = Object.FindObjectsByType<NoteData>(FindObjectsSortMode.None)[0];
+        panel.CreateTestNote();
+        NoteData b = null;
+        foreach (NoteData n in Object.FindObjectsByType<NoteData>(FindObjectsSortMode.None))
+            if (n != a) b = n;
+        b.transform.position += panel.headTransform.right * 0.6f;
+        VRHandleConnector handleA = a.GetComponentInChildren<VRHandleConnector>();
+        VRHandleConnector handleB = b.GetComponentInChildren<VRHandleConnector>();
+
+        // The rig smooths the ray's aim over time, so after each move wait until the ray has
+        // actually settled (with a time limit) instead of a fixed number of frames.
+        // Stand back 0.8 m and aim at A's handle, then hold grip.
+        right.position = handleA.transform.position - a.transform.forward * 0.8f;
+        right.rotation = Quaternion.LookRotation(handleA.transform.position - right.position);
+        float t0 = Time.realtimeSinceStartup;
+        while (!nearFar.interactablesHovered.Contains(handleA.GetComponent<XRSimpleInteractable>()) && Time.realtimeSinceStartup - t0 < 3f)
+            yield return null;
+        Assert.IsTrue(nearFar.interactablesHovered.Contains(handleA.GetComponent<XRSimpleInteractable>()), "Ray should hover A's handle.");
+        nearFar.selectInput.QueueManualState(true, 1f, true, false);
+        for (int i = 0; i < 3; i++) yield return null;
+
+        ConnectionLine line = Object.FindObjectsByType<ConnectionLine>(FindObjectsSortMode.None).SingleOrDefault();
+        Assert.IsNotNull(line, "Gripping a handle with the ray should start a connector.");
+        Assert.Less(Vector3.Distance(line.followWhilePulling.position, handleA.transform.position), 0.05f,
+            "Loose end should start at the ray tip (on the handle), not at the controller.");
+
+        // Swing the ray onto the middle of note B: the loose end should snap to B's handle.
+        right.rotation = Quaternion.LookRotation(b.transform.position - right.position);
+        t0 = Time.realtimeSinceStartup;
+        while (Vector3.Distance(line.followWhilePulling.position, handleB.transform.position) > 0.001f && Time.realtimeSinceStartup - t0 < 3f)
+            yield return null;
+        Assert.Less(Vector3.Distance(line.followWhilePulling.position, handleB.transform.position), 0.001f,
+            "Pointing at note B should snap the loose end to B's handle.");
+        Assert.IsTrue(handleB.glowOutline.activeSelf, "B's handle should glow while it's the snap target.");
+
+        // Let go.
+        nearFar.selectInput.QueueManualState(false, 0f, false, true);
+        for (int i = 0; i < 3; i++) yield return null;
+        Assert.AreEqual(handleB.transform, line.pointB, "Releasing on B should connect to B.");
+        Assert.IsFalse(handleB.glowOutline.activeSelf, "B's glow should switch off after connecting.");
+
+        // Second drag from B, released pointing at empty space: cancelled.
+        right.position = handleB.transform.position - b.transform.forward * 0.8f;
+        right.rotation = Quaternion.LookRotation(handleB.transform.position - right.position);
+        t0 = Time.realtimeSinceStartup;
+        while (!nearFar.interactablesHovered.Contains(handleB.GetComponent<XRSimpleInteractable>()) && Time.realtimeSinceStartup - t0 < 3f)
+            yield return null;
+        Assert.IsTrue(nearFar.interactablesHovered.Contains(handleB.GetComponent<XRSimpleInteractable>()),
+            "Ray should hover B's handle (not B's note body) when aimed straight at it.");
+        nearFar.selectInput.QueueManualState(true, 1f, true, false);
+        for (int i = 0; i < 3; i++) yield return null;
+        Assert.AreEqual(2, Object.FindObjectsByType<ConnectionLine>(FindObjectsSortMode.None).Length, "Second connector should start.");
+
+        right.rotation = Quaternion.LookRotation(Vector3.up);
+        t0 = Time.realtimeSinceStartup;
+        while (Time.realtimeSinceStartup - t0 < 1f) yield return null; // let the ray swing fully away
+        nearFar.selectInput.QueueManualState(false, 0f, false, true);
+        for (int i = 0; i < 3; i++) yield return null;
+        Assert.AreEqual(1, Object.FindObjectsByType<ConnectionLine>(FindObjectsSortMode.None).Length,
+            "Releasing over empty space should remove the new connector.");
+
+        yield return new ExitPlayMode();
+    }
+
     [UnityTest]
     public IEnumerator RightRayStillHoversWithTourMenuOpenAndCanHoverHandles()
     {
