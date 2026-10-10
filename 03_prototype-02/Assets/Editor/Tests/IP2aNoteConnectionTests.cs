@@ -69,12 +69,12 @@ public class IP2aNoteConnectionTests
         Assert.IsNotNull(line, "Grabbing a handle should start a line.");
         Assert.IsNull(line.pointB, "The line should be loose while dragging.");
 
-        // Drop on the middle of note B (not exactly on its small handle).
-        hand.transform.position = b.transform.position;
+        // Drop 5 cm off one of B's handles: inside its 8 cm magnet radius.
+        hand.transform.position = handleB.transform.position + Vector3.up * 0.05f;
         Physics.SyncTransforms();
         manager.SelectExit((IXRSelectInteractor)hand, (IXRSelectInteractable)handleA);
 
-        Assert.AreEqual(handleB.transform, line.pointB, "Dropping on note B should connect to B's handle.");
+        Assert.AreEqual(handleB.transform, line.pointB, "Dropping near B's handle should snap to it.");
         Assert.IsTrue(TourManager.tourPath.Contains(a.transform) && TourManager.tourPath.Contains(b.transform),
             "Both notes should be registered for Tour Mode.");
 
@@ -111,6 +111,59 @@ public class IP2aNoteConnectionTests
         Assert.AreEqual(0, LinesFrom(handleA), "A note shouldn't connect to itself.");
 
         yield return new ExitPlayMode();
+    }
+
+    [UnityTest]
+    public IEnumerator OneHandleCanHaveSeveralConnections()
+    {
+        EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+        yield return new EnterPlayMode();
+        yield return null;
+        Setup();
+
+        NoteData a = SpawnNote(Vector3.zero);
+        NoteData b = SpawnNote(panel.headTransform.right * 0.7f);
+        NoteData c = SpawnNote(panel.headTransform.up * 0.5f);
+        Physics.SyncTransforms();
+        XRSimpleInteractable handleA = HandleOf(a);
+
+        foreach (NoteData target in new[] { b, c })
+        {
+            hand.transform.position = handleA.transform.position;
+            manager.SelectEnter((IXRSelectInteractor)hand, (IXRSelectInteractable)handleA);
+            hand.transform.position = HandleOf(target).transform.position;
+            manager.SelectExit((IXRSelectInteractor)hand, (IXRSelectInteractable)handleA);
+        }
+        yield return null;
+
+        Assert.AreEqual(2, LinesFrom(handleA), "The same handle should hold two lines.");
+        Assert.AreEqual(2, handleA.GetComponent<VRHandleConnector>().ConnectionCount);
+        Assert.AreEqual(VRHandleConnector.State.Idle, handleA.GetComponent<VRHandleConnector>().VisualState,
+            "A handle with lines should stay visible even when its note isn't hovered.");
+
+        yield return new ExitPlayMode();
+    }
+
+    [Test]
+    public void EachShapeHasAHandlePerEdge()
+    {
+        var expected = new System.Collections.Generic.Dictionary<string, int>
+            { { "Rectangle", 4 }, { "Circle", 4 }, { "Triangle", 3 }, { "Hexagon", 6 }, { "Star", 5 } };
+        foreach (var pair in expected)
+        {
+            GameObject prefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>($"Assets/Prefabs/Notes/{pair.Key}Note.prefab");
+            VRHandleConnector[] handles = prefab.GetComponentsInChildren<VRHandleConnector>(true);
+            Assert.AreEqual(pair.Value, handles.Length, pair.Key + " handle count");
+            Assert.IsNotNull(prefab.GetComponent<NoteHandles>(), pair.Key + " needs NoteHandles");
+
+            Bounds body = prefab.GetComponent<BoxCollider>().bounds;
+            foreach (VRHandleConnector h in handles)
+            {
+                Assert.AreEqual(0.02f, h.visual.localScale.x, 0.0001f, "Handle dot should be 2/3 of the old 0.03.");
+                // Every handle sits outside the note's text: beyond the inner text-safe area.
+                Assert.Greater(((Vector2)h.transform.localPosition).magnitude, 0.05f, pair.Key + " handle too close to the centre");
+            }
+        }
     }
 
     void Setup()

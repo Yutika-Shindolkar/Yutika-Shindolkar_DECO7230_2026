@@ -66,7 +66,7 @@ public class IP2aControllerRayTests
         yield return new ExitPlayMode();
     }
 
-    // Miro-style connector with the real controller ray: grip a handle, point the ray at
+    // Connector drag with the real controller ray: grip a handle, point the ray at
     // another note (the loose end snaps to it and it glows), let go to connect; letting go
     // over empty space cancels.
     [UnityTest]
@@ -113,20 +113,33 @@ public class IP2aControllerRayTests
         Assert.Less(Vector3.Distance(line.followWhilePulling.position, handleA.transform.position), 0.05f,
             "Loose end should start at the ray tip (on the handle), not at the controller.");
 
-        // Swing the ray onto the middle of note B: the loose end should snap to B's handle.
+        // Swing the ray onto the middle of note B: B's handles should appear (breathing),
+        // but nothing snaps yet - its handles are all more than 8 cm from the centre.
         right.rotation = Quaternion.LookRotation(b.transform.position - right.position);
+        t0 = Time.realtimeSinceStartup;
+        while (handleB.VisualState == VRHandleConnector.State.Hidden && Time.realtimeSinceStartup - t0 < 3f)
+            yield return null;
+        Assert.AreEqual(VRHandleConnector.State.Idle, handleB.VisualState, "Dragging over note B should reveal its handles.");
+        Assert.IsNull(line.pointB);
+
+        // Now within 4 cm of one of B's handles: inside the magnet, so both ends go green
+        // and the loose end snaps onto it.
+        Vector3 nearB = handleB.transform.position + Vector3.up * 0.04f;
+        right.rotation = Quaternion.LookRotation(nearB - right.position);
         t0 = Time.realtimeSinceStartup;
         while (Vector3.Distance(line.followWhilePulling.position, handleB.transform.position) > 0.001f && Time.realtimeSinceStartup - t0 < 3f)
             yield return null;
         Assert.Less(Vector3.Distance(line.followWhilePulling.position, handleB.transform.position), 0.001f,
-            "Pointing at note B should snap the loose end to B's handle.");
-        Assert.IsTrue(handleB.glowOutline.activeSelf, "B's handle should glow while it's the snap target.");
+            "Ray within the magnet radius should snap the loose end to B's handle.");
+        Assert.AreEqual(VRHandleConnector.State.Forming, handleB.VisualState, "Target handle should turn green.");
+        Assert.AreEqual(VRHandleConnector.State.Forming, handleA.VisualState, "Source handle should turn green too.");
 
         // Let go.
         nearFar.selectInput.QueueManualState(false, 0f, false, true);
         for (int i = 0; i < 3; i++) yield return null;
-        Assert.AreEqual(handleB.transform, line.pointB, "Releasing on B should connect to B.");
-        Assert.IsFalse(handleB.glowOutline.activeSelf, "B's glow should switch off after connecting.");
+        Assert.AreEqual(handleB.transform, line.pointB, "Releasing on green should connect to B.");
+        Assert.AreNotEqual(VRHandleConnector.State.Forming, handleB.VisualState, "Green should clear after connecting.");
+        Assert.AreNotEqual(VRHandleConnector.State.Forming, handleA.VisualState, "Green should clear after connecting.");
 
         // Second drag from B, released pointing at empty space: cancelled.
         right.position = handleB.transform.position - b.transform.forward * 0.8f;
@@ -147,6 +160,50 @@ public class IP2aControllerRayTests
         for (int i = 0; i < 3; i++) yield return null;
         Assert.AreEqual(1, Object.FindObjectsByType<ConnectionLine>(FindObjectsSortMode.None).Length,
             "Releasing over empty space should remove the new connector.");
+
+        // ---- Yank to disconnect ----
+        // Aim at the line (away from its label in the middle), and grip it.
+        LineRenderer lr = line.GetComponent<LineRenderer>();
+        Vector3 onLine = lr.GetPosition(6);
+        right.position = onLine - a.transform.forward * 0.8f;
+        right.rotation = Quaternion.LookRotation(onLine - right.position);
+        XRSimpleInteractable lineGrab = line.GetComponentInChildren<LineYank>().GetComponent<XRSimpleInteractable>();
+        t0 = Time.realtimeSinceStartup;
+        while (!nearFar.interactablesHovered.Contains(lineGrab) && Time.realtimeSinceStartup - t0 < 3f)
+            yield return null;
+        Assert.IsTrue(nearFar.interactablesHovered.Contains(lineGrab), "Ray should hover the line.");
+        Assert.IsFalse(XRButtonPressRouter.IsPressable(lineGrab), "Trigger/mouse click must not grab a line.");
+
+        // A small pull (about 10 cm) bends it but doesn't break it; letting go springs back.
+        nearFar.selectInput.QueueManualState(true, 1f, true, false);
+        for (int i = 0; i < 3; i++) yield return null;
+        right.rotation = Quaternion.LookRotation(onLine + Vector3.up * 0.1f - right.position);
+        t0 = Time.realtimeSinceStartup;
+        while (Time.realtimeSinceStartup - t0 < 1f) yield return null;
+        Assert.IsTrue(line != null, "A small pull shouldn't break the line.");
+        Assert.Greater(line.stretch, 0.2f, "The line should stretch while pulled.");
+        nearFar.selectInput.QueueManualState(false, 0f, false, true);
+        for (int i = 0; i < 3; i++) yield return null;
+        Assert.IsTrue(line != null && line.pointB == handleB.transform, "Releasing early keeps the connection.");
+        Assert.IsFalse(line.bendThrough.HasValue, "The line should spring back when let go.");
+
+        // A big pull (about 40 cm) snaps it.
+        right.rotation = Quaternion.LookRotation(onLine - right.position);
+        t0 = Time.realtimeSinceStartup;
+        while (!nearFar.interactablesHovered.Contains(lineGrab) && Time.realtimeSinceStartup - t0 < 3f)
+            yield return null;
+        nearFar.selectInput.QueueManualState(true, 1f, true, false);
+        for (int i = 0; i < 3; i++) yield return null;
+        right.rotation = Quaternion.LookRotation(onLine + Vector3.up * 0.4f - right.position);
+        t0 = Time.realtimeSinceStartup;
+        while (line != null && Time.realtimeSinceStartup - t0 < 3f) yield return null;
+        Assert.IsTrue(line == null, "Yanking the line past 25 cm should break the connection.");
+        nearFar.selectInput.QueueManualState(false, 0f, false, true);
+        for (int i = 0; i < 3; i++) yield return null;
+        Assert.AreEqual(0, Object.FindObjectsByType<ConnectionLine>(FindObjectsSortMode.None).Length);
+        Assert.IsFalse(TourManager.tourPath.Contains(a.transform) || TourManager.tourPath.Contains(b.transform),
+            "Notes with no connections left should leave the Tour list.");
+        Assert.AreEqual(0, handleB.ConnectionCount);
 
         yield return new ExitPlayMode();
     }

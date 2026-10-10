@@ -205,13 +205,13 @@ public class IP2aWhiteboardTests
         return note;
     }
 
-    // Grabs a's handle with the test hand, drags it onto b and lets go.
+    // Grabs a's handle with the test hand, drags it onto one of b's handles and lets go.
     ConnectionLine Connect(NoteData a, NoteData b)
     {
         XRSimpleInteractable handle = a.GetComponentInChildren<VRHandleConnector>().GetComponent<XRSimpleInteractable>();
         hand.transform.position = handle.transform.position;
         manager.SelectEnter((IXRSelectInteractor)hand, (IXRSelectInteractable)handle);
-        hand.transform.position = b.transform.position;
+        hand.transform.position = b.GetComponentInChildren<VRHandleConnector>().transform.position;
         Physics.SyncTransforms();
         manager.SelectExit((IXRSelectInteractor)hand, (IXRSelectInteractable)handle);
         hand.transform.position = new Vector3(0f, -50f, 0f);

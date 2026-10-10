@@ -568,41 +568,46 @@ public static class IP2aSceneBuilder
         grab.colliders.Add(col);
         note.AddComponent<NoteTrashHandler>();
 
-        // Handle child for connecting notes together
-        GameObject handle = new GameObject("Handle");
-        handle.transform.SetParent(note.transform, false);
-        // Default layer, not "Handle": the XRI starter controllers' ray and near casts only
-        // look at Default/UI layers, so a handle on its own layer could never be grabbed.
-        handle.layer = 0;
-        handle.transform.localPosition = new Vector3(noteSize * 0.55f, -noteSize * 0.4f, 0f);
-        BoxCollider handleCol = handle.AddComponent<BoxCollider>();
-        handleCol.size = Vector3.one * 0.03f;
-        VRHandleConnector connector = handle.AddComponent<VRHandleConnector>();
-        connector.linePrefab = linePrefab;
-        connector.labelPrefab = labelPrefab;
-        connector.snapDistance = 0.15f;
-        connector.handleLayer = 1 << handleLayer;
+        // Connection handles: one at the middle of each edge, just outside the
+        // shape, so a line can leave or arrive on any side. See GetHandlePositions for
+        // where they go per shape. NoteHandles reveals them (breathing) while the note is
+        // hovered; VRHandleConnector does the dragging, snapping and colours.
+        Vector2[] handlePositions = GetHandlePositions(shape, noteSize);
+        for (int h = 0; h < handlePositions.Length; h++)
+        {
+            GameObject handle = new GameObject("Handle_" + h);
+            handle.transform.SetParent(note.transform, false);
+            // Default layer, not "Handle": the XRI starter controllers' ray and near casts
+            // only look at Default/UI layers, so a handle on its own layer could never be grabbed.
+            handle.layer = 0;
+            handle.transform.localPosition = handlePositions[h];
+            BoxCollider handleCol = handle.AddComponent<BoxCollider>();
+            handleCol.size = Vector3.one * 0.03f; // grab area stays this size; the visible dot is smaller
+            VRHandleConnector connector = handle.AddComponent<VRHandleConnector>();
+            connector.linePrefab = linePrefab;
+            connector.labelPrefab = labelPrefab;
 
-        GameObject handleVisual = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        handleVisual.name = "HandleVisual";
-        handleVisual.transform.SetParent(handle.transform, false);
-        handleVisual.transform.localScale = Vector3.one * 0.03f;
-        Object.DestroyImmediate(handleVisual.GetComponent<Collider>());
-        handleVisual.GetComponent<Renderer>().sharedMaterial = GetOrCreateUnlitMaterial(MaterialsDir + "/Handle_Mat.mat", new Color(0.2f, 0.2f, 0.2f));
+            GameObject handleVisual = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            handleVisual.name = "HandleVisual_" + h; // unique names keep prefab object IDs stable across rebuilds
+            handleVisual.transform.SetParent(handle.transform, false);
+            handleVisual.transform.localScale = Vector3.one * 0.02f; // two thirds of the old 0.03 dot
+            Object.DestroyImmediate(handleVisual.GetComponent<Collider>());
+            handleVisual.GetComponent<Renderer>().sharedMaterial = GetOrCreateUnlitMaterial(MaterialsDir + "/Handle_Mat.mat", new Color(0.2f, 0.2f, 0.2f));
+            connector.visual = handleVisual.transform;
 
-        // Yellow hover-glow, hidden until a controller/hand ray or poke is hovering this
-        // handle - same show/hide-on-hover pattern as the shape buttons' glow rings and the
-        // new plus-button sphere.
-        GameObject handleGlow = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        handleGlow.name = "GlowOutline";
-        handleGlow.transform.SetParent(handle.transform, false);
-        handleGlow.transform.localScale = Vector3.one * 0.042f; // a bit larger than HandleVisual so it reads as an outline behind it
-        Object.DestroyImmediate(handleGlow.GetComponent<Collider>());
-        handleGlow.GetComponent<Renderer>().sharedMaterial =
-            GetOrCreateTransparentMaterial(MaterialsDir + "/HandleGlow_Mat.mat", new Color(1f, 0.85f, 0.2f, 0.55f));
-        handleGlow.SetActive(false);
-        connector.glowOutline = handleGlow;
-
+            // Halo behind the dot: yellow when hovered (grabbable), green while a
+            // connection is forming. Coloured at runtime by VRHandleConnector.
+            GameObject handleGlow = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            handleGlow.name = "GlowOutline_" + h;
+            handleGlow.transform.SetParent(handle.transform, false);
+            handleGlow.transform.localScale = Vector3.one * 0.03f;
+            Object.DestroyImmediate(handleGlow.GetComponent<Collider>());
+            handleGlow.GetComponent<Renderer>().sharedMaterial =
+                GetOrCreateTransparentMaterial(MaterialsDir + "/HandleGlow_Mat.mat", new Color(1f, 0.85f, 0.2f, 0.55f));
+            handleGlow.SetActive(false);
+            connector.glowOutline = handleGlow;
+        }
+        note.AddComponent<NoteHandles>();
         string path = $"{NotesDir}/{shapeName}Note.prefab";
         GameObject prefab = PrefabUtility.SaveAsPrefabAsset(note, path);
         Object.DestroyImmediate(note);
@@ -1307,6 +1312,47 @@ public static class IP2aSceneBuilder
         }
     }
 
+    // Where a note's connection handles go, in note-local units: the middle of each edge,
+    // pushed a little outside the shape so they never cover the text and are easy to aim at.
+    //   Rectangle 4, Triangle 3, Hexagon 6: edge midpoints.
+    //   Circle 4: top, bottom, left, right.
+    //   Star 5: in the notches between the points (Yutika's sketch).
+    static Vector2[] GetHandlePositions(NoteShape shape, float size)
+    {
+        const float outset = 0.02f;
+        switch (shape)
+        {
+            case NoteShape.Circle:
+            {
+                float r = size * 0.5f + outset;
+                return new[] { new Vector2(0, r), new Vector2(r, 0), new Vector2(0, -r), new Vector2(-r, 0) };
+            }
+            case NoteShape.Star:
+            {
+                // Notch directions are the star's inner vertices (odd outline indices). Far
+                // enough out to clear the two neighbouring points by about 2 cm.
+                Vector2[] outline = StarOutline(size * 0.55f, size * 0.22f, 5);
+                Vector2[] notches = new Vector2[5];
+                for (int i = 0; i < 5; i++)
+                {
+                    Vector2 inner = outline[i * 2 + 1];
+                    notches[i] = inner.normalized * (inner.magnitude + 0.037f);
+                }
+                return notches;
+            }
+            default:
+            {
+                Vector2[] outline = GetShapeOutline(shape, size);
+                Vector2[] mids = new Vector2[outline.Length];
+                for (int i = 0; i < outline.Length; i++)
+                {
+                    Vector2 mid = (outline[i] + outline[(i + 1) % outline.Length]) * 0.5f;
+                    mids[i] = mid + mid.normalized * outset; // regular shapes: centre-to-midpoint is the edge normal
+                }
+                return mids;
+            }
+        }
+    }
     // The largest safe rectangle (in the same local units as `size`) that a note's text can
     // occupy without spilling past that shape's own edges. A single uniform inset (the old
     // approach) works fine for Rectangle/Circle, since those are convex and roughly

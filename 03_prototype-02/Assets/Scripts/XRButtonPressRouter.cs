@@ -73,10 +73,10 @@ public class XRButtonPressRouter : MonoBehaviour
         }
     }
 
-    // Note handles (VRHandleConnector) are press-and-hold: the line follows the hand until
-    // grip is released, so a one-shot click would leave a line dangling. They stay grip-only.
+    // Press-and-hold interactables (note handles, line grab areas - see IPressAndHold) need
+    // grip held down; a one-shot click would start an interaction that never ends.
     public static bool IsPressable(XRSimpleInteractable button) =>
-        button != null && button.isActiveAndEnabled && button.GetComponent<VRHandleConnector>() == null;
+        button != null && button.isActiveAndEnabled && button.GetComponent<IPressAndHold>() == null;
 
     void Press(XRSimpleInteractable button, IXRSelectInteractor interactor)
     {

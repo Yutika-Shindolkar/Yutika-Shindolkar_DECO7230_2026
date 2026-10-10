@@ -1,8 +1,8 @@
 using TMPro;
 using UnityEngine;
 
-// Keeps a connection label's white background sized to its text, like a label sitting on
-// a connector in Miro: the line runs into the background instead of through the letters.
+// Keeps a connection label's white background sized to its text, so the label sits on its
+// connector: the line runs into the background instead of through the letters.
 // Sits on the LabelText object; the background is a child quad just behind the text.
 public class LabelBackgroundFit : MonoBehaviour
 {

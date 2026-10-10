@@ -71,8 +71,9 @@ public class IP2aSnapshots
         longNote.transform.position += panel.headTransform.right * 0.45f;
 
         // Connect them and label the connection, the same way the handles do.
-        VRHandleConnector from = shortNote.GetComponentInChildren<VRHandleConnector>();
-        VRHandleConnector to = longNote.GetComponentInChildren<VRHandleConnector>();
+        // Rectangle handles: 0 bottom, 1 right, 2 top, 3 left. Join the facing edges.
+        VRHandleConnector from = shortNote.transform.Find("Handle_1").GetComponent<VRHandleConnector>();
+        VRHandleConnector to = longNote.transform.Find("Handle_3").GetComponent<VRHandleConnector>();
         ConnectionLine line = Object.Instantiate(from.linePrefab).GetComponent<ConnectionLine>();
         line.pointA = from.transform;
         line.pointB = to.transform;
@@ -82,13 +83,47 @@ public class IP2aSnapshots
         TMPro.TMP_Text labelText = label.GetComponentInChildren<VRLabelEdit>(true).GetComponent<TMPro.TMP_Text>();
         labelText.gameObject.SetActive(true);
         labelText.text = "leads to";
-        yield return null;
-        yield return null;
+        float settle = Time.realtimeSinceStartup;
+        while (Time.realtimeSinceStartup - settle < 0.6f) yield return null; // let the anchor dots pop in
 
         Save(cam, "notes_and_label.png");
         yield return new ExitPlayMode();
     }
 
+    // One note of every shape with its handles revealed, to check handle placement.
+    [UnityTest]
+    public IEnumerator HandlesOnEveryShape()
+    {
+        EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+        yield return new EnterPlayMode();
+        yield return null;
+
+        NoteCreationPanel panel = Object.FindFirstObjectByType<NoteCreationPanel>(FindObjectsInactive.Include);
+        Object.FindFirstObjectByType<PromptNote>()?.Hide();
+        Camera cam = panel.headTransform.GetComponent<Camera>();
+
+        NoteHandles[] notes = new NoteHandles[panel.shapePrefabs.Length];
+        for (int i = 0; i < panel.shapePrefabs.Length; i++)
+        {
+            Vector3 pos = panel.headTransform.position + panel.headTransform.forward * 1.1f
+                + panel.headTransform.right * ((i - 2) * 0.32f);
+            Quaternion rot = Quaternion.LookRotation(Vector3.ProjectOnPlane(panel.headTransform.forward, Vector3.up));
+            notes[i] = Object.Instantiate(panel.shapePrefabs[i], pos, rot).GetComponent<NoteHandles>();
+            notes[i].GetComponent<NoteData>().SetLabel(((NoteShape)i).ToString());
+        }
+
+        // Keep them revealed long enough for the pop-in to finish.
+        float t0 = Time.realtimeSinceStartup;
+        while (Time.realtimeSinceStartup - t0 < 0.6f)
+        {
+            foreach (NoteHandles n in notes) n.RevealForDrag();
+            yield return null;
+        }
+        foreach (NoteHandles n in notes) n.RevealForDrag();
+        Save(cam, "handles_on_every_shape.png");
+
+        yield return new ExitPlayMode();
+    }
     static void Save(Camera cam, string fileName)
     {
         const int width = 1280, height = 960;
