@@ -59,64 +59,6 @@ public static class IP2aSceneBuilder
         Debug.Log("IP2aSceneBuilder: XR Origin (XR Rig) is now at the scene root, position (0,0,0), no rotation.");
     }
 
-    // Diagnostic: run this in Play mode (panel open, mic mounted) to find out exactly
-    // why the mic FBX doesn't render in Game view. Logs world positions, viewport
-    // coordinates (from Camera.main), and Renderer.isVisible for the mic mesh vs the
-    // MicBase placeholder, so we can tell frustum-culling / occlusion apart from a
-    // material or draw-order problem instead of guessing.
-    [MenuItem("Tools/IP2a/Debug Mic Visibility")]
-    public static void DebugMicVisibility()
-    {
-        if (!Application.isPlaying)
-        {
-            Debug.LogWarning("IP2aSceneBuilder: Debug Mic Visibility only works in Play mode (open the note panel first).");
-            return;
-        }
-
-        Camera cam = Camera.main;
-        if (cam == null)
-        {
-            Debug.LogError("IP2aSceneBuilder: Camera.main is null.");
-            return;
-        }
-
-        GameObject cyl = GameObject.Find("Cylinder003");
-        GameObject micBase = GameObject.Find("MicBase");
-        GameObject micFbxGO = cyl != null ? cyl.transform.parent.gameObject : null;
-
-        Debug.Log($"IP2aSceneBuilder: Camera.main = '{cam.name}', world pos {cam.transform.position}, forward {cam.transform.forward}, nearClip {cam.nearClipPlane}, farClip {cam.farClipPlane}");
-
-        if (cyl != null)
-        {
-            Vector3 worldPos = cyl.transform.position;
-            Vector3 viewport = cam.WorldToViewportPoint(worldPos);
-            Renderer r = cyl.GetComponent<Renderer>();
-            Debug.Log($"IP2aSceneBuilder: Cylinder003 world pos {worldPos}, viewport coords {viewport} (0..1,0..1 on-screen, z>0 in front of camera), Renderer.isVisible={r?.isVisible}, Renderer.enabled={r?.enabled}, bounds.center={r?.bounds.center}, bounds.size={r?.bounds.size}");
-        }
-        else
-        {
-            Debug.LogError("IP2aSceneBuilder: could not find 'Cylinder003' in the scene (is the panel open?).");
-        }
-
-        if (micFbxGO != null)
-        {
-            Vector3 viewport = cam.WorldToViewportPoint(micFbxGO.transform.position);
-            Debug.Log($"IP2aSceneBuilder: mic,fbx world pos {micFbxGO.transform.position}, viewport coords {viewport}");
-        }
-
-        if (micBase != null)
-        {
-            Vector3 worldPos = micBase.transform.position;
-            Vector3 viewport = cam.WorldToViewportPoint(worldPos);
-            Renderer r = micBase.GetComponent<Renderer>();
-            Debug.Log($"IP2aSceneBuilder: MicBase world pos {worldPos}, viewport coords {viewport}, Renderer.isVisible={r?.isVisible}, Renderer.enabled={r?.enabled}");
-        }
-        else
-        {
-            Debug.LogError("IP2aSceneBuilder: could not find 'MicBase' in the scene.");
-        }
-    }
-
     [MenuItem("Tools/IP2a/Build Clap-To-Panel Flow")]
     public static void Build()
     {
@@ -407,7 +349,7 @@ public static class IP2aSceneBuilder
         }
 
         // Mic - a permanent fixture mounted on the panel's right edge (not a spawnable prop).
-        BuildAndMountMic(panelGO, panelWidth);
+        Transform mic = BuildMic(panelGO, panelWidth);
 
         // Wire the panel script fields
         var so = new SerializedObject(panel);
@@ -434,6 +376,7 @@ public static class IP2aSceneBuilder
         for (int i = 0; i < 5; i++)
             colorsProp.GetArrayElementAtIndex(i).colorValue = shapeColors[i];
 
+        so.FindProperty("mic").objectReferenceValue = mic;
         so.FindProperty("noteTextDisplay").objectReferenceValue = noteTextDisplay;
         so.FindProperty("notePlaceholder").objectReferenceValue = notePlaceholder;
         so.FindProperty("noteFieldBackground").objectReferenceValue = noteFieldBackground;
@@ -1090,191 +1033,102 @@ public static class IP2aSceneBuilder
         return prefab;
     }
 
-    // Builds the desk-mic-style fixture mounted on the panel's right edge: a fixed base,
-    // an arm that visually rotates to track the head, and a grabbable head that the user
-    // can pull toward/push away from the panel but never fully detach. See
-    // MicBoomConstraint.cs for the actual movement clamp (added to the mount below).
-    static void BuildAndMountMic(GameObject panelGO, float panelWidth)
+    // The mic: the boom-arm mic model as one grabbable object beside the panel's right edge,
+    // on the front (user-facing) side. It can be grabbed and moved anywhere (no audio yet),
+    // and NoteCreationPanel puts it back beside the panel each time the panel opens.
+    //
+    // The model's meshes sit about 2 m from its own origin, so it's wrapped in a "Mic"
+    // object whose origin is the model's visual centre; grabbing then works from where the
+    // mic actually appears. Built once - an existing Mic is only re-posed, never
+    // re-instantiated, so the scene doesn't churn on rebuilds.
+    const float MicHeight = 0.22f;  // metres, top of the mic to the bottom of its clamp
+    const float MicHeightOnPanel = 0.03f; // centre of the mic relative to the panel centre
+    static readonly Vector3 MicRotation = new Vector3(0f, 215f, 0f); // clamp toward the panel, head angled toward the user
+
+    static Transform BuildMic(GameObject panelGO, float panelWidth)
     {
-        // The mic FBX's mesh isn't centred on its own pivot (I confirmed this by trying
-        // to auto-correct it from Renderer.bounds, which overshot to ~0.7m away - reverted
-        // that, see below). Once you can see the mic in the Editor, nudge the "mic,fbx"
-        // object's Position in the Inspector until it sits right at the end of the arm,
-        // then tell me those X/Y/Z numbers and I'll put them here permanently instead of
-        // (0,0,0) - same as we did for the -180 Y rotation.
-        Vector3 micVisualOffset = Vector3.zero;
+        // Older versions: a mount with a separate base, arm and a clamped head.
+        Transform legacy = panelGO.transform.Find("MicMount");
+        if (legacy != null) Object.DestroyImmediate(legacy.gameObject);
 
-        GameObject mount = FindOrCreateChild(panelGO.transform, "MicMount");
-        mount.transform.localPosition = new Vector3(panelWidth * 0.5f + 0.02f, 0.02f, -0.01f);
-        mount.transform.localRotation = Quaternion.identity;
+        GameObject mic = FindOrCreateChild(panelGO.transform, "Mic");
+        mic.transform.localPosition = new Vector3(panelWidth * 0.5f, MicHeightOnPanel, 0f);
+        mic.transform.localRotation = Quaternion.Euler(MicRotation);
+        mic.transform.localScale = Vector3.one;
 
-        GameObject baseGO = FindOrCreateChild(mount.transform, "MicBase");
-        SetupFlatShape(baseGO, RegularPolygon(0.025f, 16, 0f), 0.015f, new Color(0.2f, 0.2f, 0.2f), "MicBase");
-        baseGO.transform.localPosition = Vector3.zero;
-        RemoveCollider(baseGO); // purely visual - not meant to be interactable itself
-
-        float armLength = 0.07f; // was 0.14 - too long, made the mic look like it was floating well off the panel
-
-        GameObject arm = FindOrCreateChild(mount.transform, "MicArm");
-        arm.transform.localPosition = Vector3.zero;
-        arm.transform.localRotation = Quaternion.identity;
-
-        GameObject armVisual = FindOrCreateChild(arm.transform, "MicArmVisual");
-        MeshFilter armMf = armVisual.GetComponent<MeshFilter>();
-        if (armMf == null) armMf = armVisual.AddComponent<MeshFilter>();
-        GameObject tempCube = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        armMf.sharedMesh = tempCube.GetComponent<MeshFilter>().sharedMesh;
-        Object.DestroyImmediate(tempCube);
-        MeshRenderer armMr = armVisual.GetComponent<MeshRenderer>();
-        if (armMr == null) armMr = armVisual.AddComponent<MeshRenderer>();
-        armMr.sharedMaterial = GetOrCreateUnlitMaterial($"{MaterialsDir}/MicArm_Mat.mat", new Color(0.25f, 0.25f, 0.25f));
-        // Spans 0..armLength along local Z (not centred on the pivot) so it visually
-        // connects the mount to wherever MicBoomConstraint puts the head each frame.
-        armVisual.transform.localScale = new Vector3(0.006f, 0.006f, armLength);
-        armVisual.transform.localPosition = new Vector3(0, 0, armLength * 0.5f);
-        RemoveCollider(armVisual);
-
-        // Sibling of MicArm (not its child) so the constraint script can move the head
-        // independently of the arm's own rotation.
-        GameObject headGO = FindOrCreateChild(mount.transform, "MicHead");
-        headGO.transform.localPosition = new Vector3(0, 0, armLength);
-        headGO.transform.localRotation = Quaternion.identity;
-
-        // The mic model is only placed once. Re-instantiating it on every run gave it new
-        // object IDs (and a new shortened arm mesh) each time, churning the scene file.
-        // To redo it, delete MicHead's child in the scene and run the builder again.
-        GameObject micVisualSource = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/mic,fbx.fbx");
-        bool micAlreadyPlaced = headGO.transform.childCount > 0;
-        if (micVisualSource != null && !micAlreadyPlaced)
+        Transform model = mic.transform.Find("MicModel");
+        if (model == null)
         {
-            GameObject micVisual = (GameObject)PrefabUtility.InstantiatePrefab(micVisualSource, headGO.transform);
-            // Reverted the Renderer.bounds auto-centring I tried here - it overshot badly
-            // (pushed the model ~0.7m away, nowhere near MicHead) rather than fixing the
-            // offset, so it's worse than doing nothing. Back to zero, which at least
-            // parents the model at the right spot even if the FBX's own mesh pivot isn't
-            // centred on it.
-            micVisual.transform.localPosition = micVisualOffset;
-            // Confirmed by eye in the Inspector - the model's own front faced away from
-            // the user at identity rotation, this turns it around to face correctly.
-            micVisual.transform.localRotation = Quaternion.Euler(0f, -180f, 0f);
-            micVisual.transform.localScale = Vector3.one * 0.35f;
-            // The FBX's mesh pivot isn't centred on this transform (see the bounds-based
-            // recentring further down, after Object009 is shortened) - micVisualOffset above
-            // stays a manual nudge you can still use on top of that if the auto-centring
-            // isn't perfect once you see it.
-
-            // The mic model has its own built-in boom-arm piece, "Object009" in the FBX -
-            // it was reaching way further than intended. You asked for its actual length
-            // shortened, not its Transform scaled down, so this edits the mesh's own
-            // vertex data instead: it rewrites Object009's mesh, compressing vertices
-            // along whichever local axis is longest (almost certainly the rod's length),
-            // keeping the end nearer the mount fixed and pulling only the far end in.
-            // Object009's own Transform.localScale stays exactly (1,1,1) throughout - only
-            // the geometry itself gets smaller. armShortenFactor is the one number to
-            // adjust: 0.5 halves its real length, 0.3 leaves 30% of it, etc.
-            float armShortenFactor = 0.5f;
-            Transform micArmPiece = micVisual.transform.Find("Object009");
-            if (micArmPiece != null)
+            GameObject source = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/mic,fbx.fbx");
+            if (source == null)
             {
-                MeshFilter micArmMf = micArmPiece.GetComponent<MeshFilter>();
-                if (micArmMf != null && micArmMf.sharedMesh != null)
-                {
-                    Mesh originalArmMesh = micArmMf.sharedMesh;
-                    Bounds localBounds = originalArmMesh.bounds;
-                    float extentX = localBounds.size.x, extentY = localBounds.size.y, extentZ = localBounds.size.z;
-                    int lengthAxis = (extentX >= extentY && extentX >= extentZ) ? 0 : (extentY >= extentZ ? 1 : 2);
-                    float anchorCoord = lengthAxis == 0 ? localBounds.min.x : lengthAxis == 1 ? localBounds.min.y : localBounds.min.z;
-
-                    Vector3[] verts = originalArmMesh.vertices;
-                    Vector3[] shortenedVerts = new Vector3[verts.Length];
-                    for (int i = 0; i < verts.Length; i++)
-                    {
-                        Vector3 v = verts[i];
-                        if (lengthAxis == 0) v.x = anchorCoord + (v.x - anchorCoord) * armShortenFactor;
-                        else if (lengthAxis == 1) v.y = anchorCoord + (v.y - anchorCoord) * armShortenFactor;
-                        else v.z = anchorCoord + (v.z - anchorCoord) * armShortenFactor;
-                        shortenedVerts[i] = v;
-                    }
-
-                    Mesh shortenedArmMesh = new Mesh();
-                    shortenedArmMesh.name = originalArmMesh.name + "_Shortened";
-                    shortenedArmMesh.vertices = shortenedVerts;
-                    shortenedArmMesh.triangles = originalArmMesh.triangles;
-                    shortenedArmMesh.normals = originalArmMesh.normals;
-                    shortenedArmMesh.uv = originalArmMesh.uv;
-                    shortenedArmMesh.RecalculateBounds();
-                    micArmMf.sharedMesh = SaveMeshAsset("MicArmShortened", shortenedArmMesh); // the original FBX asset is untouched
-
-                    string axisName = lengthAxis == 0 ? "X" : lengthAxis == 1 ? "Y" : "Z";
-                    Debug.Log($"IP2aSceneBuilder: shortened mic model's Object009 to {armShortenFactor * 100f}% of its " +
-                        $"length along local {axisName} (guessed as the rod's long axis from its mesh bounds). If it now " +
-                        "detaches from the wrong end instead of the mount end, that's the anchorCoord guess being wrong " +
-                        "- tell me and I'll flip it to localBounds.max instead.");
-                }
-                else
-                {
-                    Debug.LogWarning("IP2aSceneBuilder: found 'Object009' under the mic model but it has no mesh to shorten.");
-                }
+                Debug.LogWarning("IP2aSceneBuilder: mic model not found at Assets/Models/mic,fbx.fbx.");
+                return mic.transform;
             }
-            else
-            {
-                Debug.LogWarning("IP2aSceneBuilder: couldn't find a child named 'Object009' under the mic model - can't shorten its arm piece. Check the exact name in the Hierarchy.");
-            }
+            GameObject instance = (GameObject)PrefabUtility.InstantiatePrefab(source, mic.transform);
+            instance.name = "MicModel";
+            model = instance.transform;
+            model.localRotation = Quaternion.identity;
 
-            // Root-caused via Tools > IP2a > Debug Mic Visibility in Play mode: the FBX's
-            // sub-meshes (Cylinder003 etc.) don't just have an off-pivot origin, they render
-            // ~0.7m away from micVisual's own transform (confirmed: Cylinder003 was at
-            // viewport x=1.28, off the right edge of the screen, Renderer.isVisible=false,
-            // while micVisual's own pivot sat at a perfectly reasonable viewport x=0.65).
-            // That's why the model was invisible in Game view but looked fine in the Scene
-            // view when framed directly on it - Frame Selected jumps the camera to wherever
-            // the geometry actually is, wherever that is.
-            // The earlier Renderer.bounds auto-centring attempt wasn't wrong in kind, it was
-            // just done before the Object009 mesh edit above and left uncomputed correctly -
-            // this repeats it now, after the mesh is in its final shape, and applies the
-            // correction as a world-space Transform.position delta (never touching
-            // localScale, so it can't corrupt any child's local transform the way scaling a
-            // parent can).
-            Renderer[] micRenderers = micVisual.GetComponentsInChildren<Renderer>();
-            if (micRenderers.Length > 0)
-            {
-                Bounds combined = micRenderers[0].bounds;
-                for (int i = 1; i < micRenderers.Length; i++) combined.Encapsulate(micRenderers[i].bounds);
-                Vector3 worldDelta = headGO.transform.position - combined.center;
-                micVisual.transform.position += worldDelta;
-                Debug.Log($"IP2aSceneBuilder: recentred mic model by world offset {worldDelta} (combined mesh bounds " +
-                    $"were centred at {combined.center}, size {combined.size}, MicHead is at {headGO.transform.position}). " +
-                    "Run Tools > IP2a > Debug Mic Visibility again in Play mode to confirm Renderer.isVisible=True and " +
-                    "viewport coords are inside 0..1 now.");
-            }
-        }
-        else if (micVisualSource == null)
-        {
-            Debug.LogWarning("IP2aSceneBuilder: mic model not found at Assets/Models/mic,fbx.fbx, MicHead will have no visual.");
+            // Scale to MicHeight, then shift so the visual centre sits on Mic's origin.
+            model.localScale = Vector3.one;
+            model.localPosition = Vector3.zero;
+            Bounds raw = LocalRendererBounds(mic.transform, model);
+            float scale = MicHeight / raw.size.y;
+            model.localScale = Vector3.one * scale;
+            Bounds scaled = LocalRendererBounds(mic.transform, model);
+            model.localPosition = -scaled.center;
         }
 
-        BoxCollider headCol = headGO.GetComponent<BoxCollider>();
-        if (headCol == null) headCol = headGO.AddComponent<BoxCollider>();
-        headCol.size = new Vector3(0.05f, 0.05f, 0.08f);
-        headCol.center = Vector3.zero;
+        // Place it from its measured shape: its nearest point just touching the panel's
+        // right edge (so the clamp looks clamped on), and all of it in front of the panel face.
+        Bounds onPanel = LocalRendererBounds(panelGO.transform, model);
+        Vector3 pos = mic.transform.localPosition;
+        pos.x += panelWidth * 0.5f + 0.005f - onPanel.min.x;
+        pos.z += -0.012f - onPanel.max.z;
+        mic.transform.localPosition = pos;
 
-        Rigidbody headRb = headGO.GetComponent<Rigidbody>();
-        if (headRb == null) headRb = headGO.AddComponent<Rigidbody>();
-        headRb.useGravity = false;
-        headRb.isKinematic = true;
+        // Grab area: a box around the whole model.
+        Bounds bounds = LocalRendererBounds(mic.transform, model);
+        BoxCollider col = mic.GetComponent<BoxCollider>();
+        if (col == null) col = mic.AddComponent<BoxCollider>();
+        col.center = bounds.center;
+        col.size = bounds.size;
 
-        if (headGO.GetComponent<XRGrabInteractable>() == null)
-            headGO.AddComponent<XRGrabInteractable>();
+        Rigidbody rb = mic.GetComponent<Rigidbody>();
+        if (rb == null) rb = mic.AddComponent<Rigidbody>();
+        rb.useGravity = false;
+        rb.isKinematic = true; // stays where it's let go, like the notes
 
-        MicBoomConstraint boom = mount.GetComponent<MicBoomConstraint>();
-        if (boom == null) boom = mount.AddComponent<MicBoomConstraint>();
-        boom.mount = mount.transform;
-        boom.arm = arm.transform;
-        boom.head = headGO.transform;
-        boom.minDistance = 0.05f;
-        boom.maxDistance = armLength;
+        XRGrabInteractable grab = mic.GetComponent<XRGrabInteractable>();
+        if (grab == null) grab = mic.AddComponent<XRGrabInteractable>();
+        grab.throwOnDetach = false;
+        grab.useDynamicAttach = true; // hold it by the point you grabbed, not its centre
+        grab.farAttachMode = UnityEngine.XR.Interaction.Toolkit.Attachment.InteractableFarAttachMode.Far;
+        grab.colliders.Clear();
+        grab.colliders.Add(col);
+        return mic.transform;
     }
 
+    // Combined renderer bounds of `model`, in `space`'s local coordinates.
+    static Bounds LocalRendererBounds(Transform space, Transform model)
+    {
+        bool first = true;
+        Bounds result = new Bounds();
+        foreach (Renderer r in model.GetComponentsInChildren<Renderer>())
+        {
+            Bounds wb = r.bounds;
+            for (int i = 0; i < 8; i++)
+            {
+                Vector3 corner = wb.center + Vector3.Scale(wb.extents,
+                    new Vector3((i & 1) == 0 ? -1 : 1, (i & 2) == 0 ? -1 : 1, (i & 4) == 0 ? -1 : 1));
+                Vector3 local = space.InverseTransformPoint(corner);
+                if (first) { result = new Bounds(local, Vector3.zero); first = false; }
+                else result.Encapsulate(local);
+            }
+        }
+        return result;
+    }
     // Foot-level trash bin for the delete gesture (FootTrashBin.cs / NoteTrashHandler.cs,
     // both already in Assets/Scripts - this is just the missing piece, the GameObject
     // itself was never built into the scene). A flat rectangle standing in for the real

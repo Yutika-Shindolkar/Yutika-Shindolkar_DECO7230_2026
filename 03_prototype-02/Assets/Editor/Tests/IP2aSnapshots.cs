@@ -124,6 +124,41 @@ public class IP2aSnapshots
 
         yield return new ExitPlayMode();
     }
+    // Close-ups of the mic on the creation panel (front and side), plus a log of its parts.
+    [UnityTest]
+    public IEnumerator MicOnPanel()
+    {
+        EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+        yield return new EnterPlayMode();
+        yield return null;
+
+        NoteCreationPanel panel = Object.FindFirstObjectByType<NoteCreationPanel>(FindObjectsInactive.Include);
+        Object.FindFirstObjectByType<ClapGestureDetector>().onClap.Invoke();
+        yield return null;
+        Camera cam = panel.headTransform.GetComponent<Camera>();
+        Transform mount = panel.transform.Find("Mic");
+
+        var log = new System.Text.StringBuilder("MIC REPORT\n");
+        foreach (Renderer r in mount.GetComponentsInChildren<Renderer>(true))
+            log.AppendLine($"  renderer {r.name} (parent {r.transform.parent.name}) enabled={r.enabled} center={r.bounds.center} size={r.bounds.size}");
+        foreach (Collider col in mount.GetComponentsInChildren<Collider>(true))
+            log.AppendLine($"  collider {col.name} {col.GetType().Name} center={col.bounds.center} size={col.bounds.size}");
+        log.AppendLine($"  panel at {panel.transform.position} forward {panel.transform.forward}; mount at {mount.position}");
+        Debug.Log(log.ToString());
+
+        Vector3 originalPos = cam.transform.position;
+        Quaternion originalRot = cam.transform.rotation;
+        Vector3 focus = mount.position;
+        cam.transform.position = focus - panel.transform.forward * 0.45f;
+        cam.transform.LookAt(focus);
+        Save(cam, "mic_front.png");
+        cam.transform.position = focus + panel.transform.right * 0.45f - panel.transform.forward * 0.1f;
+        cam.transform.LookAt(focus);
+        Save(cam, "mic_side.png");
+        cam.transform.SetPositionAndRotation(originalPos, originalRot);
+
+        yield return new ExitPlayMode();
+    }
     static void Save(Camera cam, string fileName)
     {
         const int width = 1280, height = 960;

@@ -208,6 +208,67 @@ public class IP2aControllerRayTests
         yield return new ExitPlayMode();
     }
 
+    // The mic beside the creation panel: grab it with the ray, move it, let go - it stays
+    // where it was left, and goes back beside the panel when the panel next opens.
+    [UnityTest]
+    public IEnumerator MicCanBeGrabbedMovedAndReturns()
+    {
+        EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+        yield return new EnterPlayMode();
+        yield return null;
+
+        NoteCreationPanel panel = Object.FindFirstObjectByType<NoteCreationPanel>(FindObjectsInactive.Include);
+        GameObject rig = GameObject.Find("XR Origin (XR Rig)");
+        Transform right = rig.transform.Find("Camera Offset/Right Controller");
+        right.gameObject.SetActive(true);
+        foreach (Behaviour beh in right.GetComponents<Behaviour>())
+            if (beh.GetType().Name.Contains("TrackedPoseDriver")) beh.enabled = false;
+        NearFarInteractor nearFar = right.GetComponentInChildren<NearFarInteractor>(true);
+        nearFar.selectInput.inputSourceMode = UnityEngine.XR.Interaction.Toolkit.Inputs.Readers.XRInputButtonReader.InputSourceMode.ManualValue;
+
+        Object.FindFirstObjectByType<ClapGestureDetector>().onClap.Invoke();
+        yield return null;
+        Transform mic = panel.mic;
+        Assert.IsNotNull(mic, "Panel should know its mic.");
+        Vector3 homeLocal = mic.localPosition;
+        XRGrabInteractable grab = mic.GetComponent<XRGrabInteractable>();
+
+        // In front of the panel face: the mic must be on the user's side, not behind.
+        Vector3 micInPanel = panel.transform.InverseTransformPoint(mic.GetComponent<Collider>().bounds.center);
+        Assert.Less(micInPanel.z, 0f, "The mic should sit in front of the panel, not behind it.");
+
+        Vector3 aim = mic.GetComponent<Collider>().bounds.center;
+        right.position = aim - panel.transform.forward * 0.8f;
+        right.rotation = Quaternion.LookRotation(aim - right.position);
+        float t0 = Time.realtimeSinceStartup;
+        while (!nearFar.interactablesHovered.Contains(grab) && Time.realtimeSinceStartup - t0 < 3f)
+            yield return null;
+        Assert.IsTrue(nearFar.interactablesHovered.Contains(grab), "The ray should hover the mic.");
+
+        nearFar.selectInput.QueueManualState(true, 1f, true, false);
+        for (int i = 0; i < 3; i++) yield return null;
+        Assert.IsTrue(grab.isSelected, "Grip should grab the mic.");
+
+        Vector3 before = mic.position;
+        right.rotation = Quaternion.LookRotation(aim + Vector3.up * 0.25f - right.position);
+        t0 = Time.realtimeSinceStartup;
+        while (Time.realtimeSinceStartup - t0 < 1f) yield return null;
+        nearFar.selectInput.QueueManualState(false, 0f, false, true);
+        for (int i = 0; i < 3; i++) yield return null;
+
+        Vector3 moved = mic.position;
+        Assert.Greater(Vector3.Distance(before, moved), 0.1f, "The mic should move with the ray.");
+        yield return new WaitForSeconds(0.3f);
+        Assert.Less(Vector3.Distance(moved, mic.position), 0.001f, "Let go, the mic should stay put.");
+        Assert.AreEqual(panel.transform, mic.parent, "The mic should stay part of the panel.");
+
+        panel.ClosePanel();
+        Object.FindFirstObjectByType<ClapGestureDetector>().onClap.Invoke();
+        yield return null;
+        Assert.Less(Vector3.Distance(homeLocal, mic.localPosition), 0.001f, "Reopening the panel should put the mic back.");
+
+        yield return new ExitPlayMode();
+    }
     [UnityTest]
     public IEnumerator RightRayStillHoversWithTourMenuOpenAndCanHoverHandles()
     {

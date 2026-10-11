@@ -5,8 +5,8 @@ using UnityEngine.XR.Interaction.Toolkit.Interactables;
 
 // World-space panel that appears after a clap. Lets the user pick a shape, type a
 // short note, and an optional placeholder media attachment, then Discard or Create.
-// The mic is a permanent fixture mounted on the panel (see MicBoomConstraint) rather
-// than something spawned from a button, so there's no SpawnMic()/micPrefab here anymore.
+// The mic is a grabbable model that lives beside the panel (built by IP2aSceneBuilder.BuildMic);
+// it can be moved anywhere, and goes back to its spot beside the panel when the panel opens.
 public class NoteCreationPanel : MonoBehaviour
 {
     [Header("Placement")]
@@ -51,14 +51,32 @@ public class NoteCreationPanel : MonoBehaviour
     // this is the matching MediaType for each slot, used to test/set "is this one chosen".
     static readonly MediaType[] MediaOrder = { MediaType.Image, MediaType.Video, MediaType.Document };
 
+    [Header("Mic")]
+    public Transform mic;
+
     NoteShape pendingShape = NoteShape.Rectangle;
     MediaType pendingMedia = MediaType.None;
     int selectedShapeIndex = -1;
     int hoveredShapeIndex = -1;
+    Vector3 micHomePosition;
+    Quaternion micHomeRotation;
 
     void Awake()
     {
+        if (mic != null)
+        {
+            micHomePosition = mic.localPosition;
+            micHomeRotation = mic.localRotation;
+        }
         gameObject.SetActive(false);
+    }
+
+    // Puts the mic back beside the panel, wherever it was last left.
+    void ReturnMic()
+    {
+        if (mic == null || mic.parent != transform) return;
+        mic.localPosition = micHomePosition;
+        mic.localRotation = micHomeRotation;
     }
 
     public void OpenPanel()
@@ -70,6 +88,7 @@ public class NoteCreationPanel : MonoBehaviour
         hoveredShapeIndex = -1;
         HighlightShape(-1); // nothing glows and the field is the default grey until a shape is picked
         SetNoteText("");
+        ReturnMic();
 
         Vector3 pos = headTransform.position + headTransform.forward * spawnDistance;
         transform.position = pos;
