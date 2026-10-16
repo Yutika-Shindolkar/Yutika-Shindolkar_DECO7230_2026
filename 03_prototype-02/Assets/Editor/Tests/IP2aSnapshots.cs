@@ -179,6 +179,20 @@ public class IP2aSnapshots
         FootTrashBin.Instance.RegisterHoldStart();
         yield return null;
         Save(cam, "trash_bin_in_view.png");
+
+        // Same view with a note over the bin: the red outline shows.
+        FootTrashBin.Instance.ShowReady();
+        yield return null;
+        Save(cam, "trash_bin_ready.png");
+
+        // Closer, from above: the outline traces the can's silhouette without filling in
+        // its see-through mesh.
+        Transform bin = FootTrashBin.Instance.transform;
+        cam.transform.position = bin.position + Vector3.up * 0.9f - bin.forward * 0.7f;
+        cam.transform.LookAt(bin.position + Vector3.up * 0.2f);
+        FootTrashBin.Instance.ShowReady();
+        yield return null;
+        Save(cam, "trash_bin_ready_close.png");
         FootTrashBin.Instance.RegisterHoldEnd();
 
         yield return new ExitPlayMode();

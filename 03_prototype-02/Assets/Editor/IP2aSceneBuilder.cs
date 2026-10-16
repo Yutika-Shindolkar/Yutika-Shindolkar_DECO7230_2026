@@ -1129,36 +1129,91 @@ public static class IP2aSceneBuilder
         }
         return result;
     }
-    // Trash bin for the delete gesture (FootTrashBin.cs / NoteTrashHandler.cs). A simple
-    // cylinder standing in for a real bin model, with a "Drop here to delete" label above
-    // it. The root carries FootTrashBin and is placed on the floor ahead of the player at
-    // runtime; the visible parts are children, so a real model can replace BinVisual later
-    // without script changes (point FootTrashBin.visual at its renderer).
-    const float BinRadius = 0.22f;
-    const float BinHeight = 0.4f;
+    // Trash bin for the delete gesture (FootTrashBin.cs / NoteTrashHandler.cs): the trash can
+    // model with a "Drop here to delete" label above it. The root carries FootTrashBin and is
+    // placed on the floor ahead of the player at runtime.
+    //
+    // BinOutline draws a red outline around the can's silhouette (SilhouetteOutline.shader),
+    // shown only while a held note is over the bin. Built once - an existing BinModel is only
+    // re-measured, never re-instantiated.
+    const float BinHeight = 0.45f;
+    const float BinOutlineWidth = 0.02f; // metres
+    const string TrashCanModelPath = "Assets/Models/Trash Can/SM_Trash_Can.fbx";
+    const string TrashCanTexturePath = "Assets/Models/Trash Can/T_Trash_Can.png";
+    static readonly Vector3 TrashCanUpright = new Vector3(-90f, 0f, 0f);
 
     static void BuildTrashBin(GameObject rig, Transform head)
     {
         GameObject bin = FindOrCreate("FootTrashBin");
-        // Older versions drew the bin on the root itself as a flat square.
+        // Older versions drew the bin on the root itself as a flat square, then as a cylinder.
         foreach (Component old in new Component[] { bin.GetComponent<MeshRenderer>(), bin.GetComponent<MeshFilter>(), bin.GetComponent<BoxCollider>() })
             if (old != null) Object.DestroyImmediate(old);
+        Transform oldBody = bin.transform.Find("BinVisual");
+        if (oldBody != null) Object.DestroyImmediate(oldBody.gameObject);
         bin.transform.position = rig.transform.position; // starting position only; placed at runtime
         bin.transform.rotation = Quaternion.identity;
 
-        // Cylinder: a 24-sided outline extruded by the bin's height, stood upright.
-        GameObject body = FindOrCreateChild(bin.transform, "BinVisual");
-        SetupFlatShape(body, RegularPolygon(BinRadius, 24, 0f), BinHeight, new Color(0.75f, 0.35f, 0.35f), "FootTrashBin");
-        RemoveCollider(body); // not something to grab or aim at
-        body.transform.localPosition = new Vector3(0f, BinHeight * 0.5f, 0f);
-        body.transform.localRotation = Quaternion.Euler(-90f, 0f, 0f);
+        Transform model = bin.transform.Find("BinModel");
+        if (model == null)
+        {
+            GameObject source = AssetDatabase.LoadAssetAtPath<GameObject>(TrashCanModelPath);
+            if (source == null)
+            {
+                Debug.LogWarning($"IP2aSceneBuilder: trash can model not found at {TrashCanModelPath}.");
+                return;
+            }
+            GameObject instance = (GameObject)PrefabUtility.InstantiatePrefab(source, bin.transform);
+            instance.name = "BinModel";
+            model = instance.transform;
+        }
+
+        // The model comes in lying on its side (exported Z-up), so stand it up first. Then
+        // scale to BinHeight and put its base centred on the bin's origin.
+        model.localRotation = Quaternion.Euler(TrashCanUpright);
+        model.localScale = Vector3.one;
+        model.localPosition = Vector3.zero;
+        Bounds raw = LocalRendererBounds(bin.transform, model);
+        model.localScale = Vector3.one * (BinHeight / raw.size.y);
+        Bounds scaled = LocalRendererBounds(bin.transform, model);
+        model.localPosition = new Vector3(-scaled.center.x, -scaled.min.y, -scaled.center.z);
+        Bounds placed = LocalRendererBounds(bin.transform, model);
+        Debug.Log($"IP2aSceneBuilder: trash can model raw size {raw.size}, placed size {placed.size}.");
+
+        Material canMat = GetOrCreateTrashCanMaterial();
+        foreach (Renderer r in model.GetComponentsInChildren<Renderer>())
+        {
+            Material[] mats = new Material[r.sharedMaterials.Length];
+            for (int i = 0; i < mats.Length; i++) mats[i] = canMat;
+            r.sharedMaterials = mats;
+        }
+        foreach (Collider c in model.GetComponentsInChildren<Collider>()) Object.DestroyImmediate(c); // not something to grab or aim at
+
+        GameObject outline = FindOrCreateChild(bin.transform, "BinOutline");
+        outline.transform.localPosition = Vector3.zero;
+        outline.transform.localRotation = Quaternion.identity;
+        outline.transform.localScale = Vector3.one;
+        MeshFilter outlineMf = outline.GetComponent<MeshFilter>();
+        if (outlineMf == null) outlineMf = outline.AddComponent<MeshFilter>();
+        outlineMf.sharedMesh = SaveMeshAsset("FootTrashBinOutline", BuildSmoothedCopy(bin.transform, model));
+        MeshRenderer outlineMr = outline.GetComponent<MeshRenderer>();
+        if (outlineMr == null) outlineMr = outline.AddComponent<MeshRenderer>();
+        string outlineMatPath = $"{MaterialsDir}/FootTrashBinOutline_Mat.mat";
+        Material outlineMat = AssetDatabase.LoadAssetAtPath<Material>(outlineMatPath);
+        if (outlineMat == null)
+        {
+            outlineMat = new Material(Shader.Find("Custom/SilhouetteOutline"));
+            AssetDatabase.CreateAsset(outlineMat, outlineMatPath);
+        }
+        outlineMat.SetFloat("_Width", BinOutlineWidth);
+        outlineMr.sharedMaterial = outlineMat;
+        outlineMr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
 
         // The text sits under a plain holder that does the positioning (the text's own
         // RectTransform position didn't persist when set from here).
         Transform strayLabel = bin.transform.Find("BinLabel");
         if (strayLabel != null) Object.DestroyImmediate(strayLabel.gameObject);
         GameObject labelHolder = FindOrCreateChild(bin.transform, "BinLabelHolder");
-        labelHolder.transform.localPosition = new Vector3(0f, BinHeight + 0.15f, 0f);
+        labelHolder.transform.localPosition = new Vector3(0f, placed.max.y + 0.15f, 0f);
         labelHolder.transform.localRotation = Quaternion.identity;
         GameObject labelGO = FindOrCreateChild(labelHolder.transform, "BinLabel");
         TextMeshPro label = labelGO.GetComponent<TextMeshPro>();
@@ -1176,10 +1231,81 @@ public static class IP2aSceneBuilder
         if (trashBin == null) trashBin = bin.AddComponent<FootTrashBin>();
         trashBin.playerRoot = rig.transform; // XR Origin's own root = floor-level position (Tracking Origin Mode: Floor)
         trashBin.headTransform = head;       // where the player is and which way they face
-        trashBin.visual = body.GetComponent<Renderer>();
+        trashBin.visual = model.GetComponentInChildren<Renderer>();
+        trashBin.outline = outlineMr;
         trashBin.footOffsetY = 0f;
-        trashBin.dropRadius = BinRadius + 0.08f;
-        trashBin.dropHeight = BinHeight + 0.4f;
+        float binRadius = Mathf.Max(placed.extents.x, placed.extents.z);
+        trashBin.dropRadius = binRadius + 0.08f;
+        trashBin.dropHeight = placed.size.y + 0.4f;
+    }
+
+    // URP Lit with the trash can's texture, so it's shaded like a real object in the room.
+    // The texture is a wire mesh with see-through gaps, so it's alpha-clipped and drawn on
+    // both sides (the inside of the basket shows through the gaps).
+    static Material GetOrCreateTrashCanMaterial()
+    {
+        string path = $"{MaterialsDir}/TrashCan_Mat.mat";
+        Material mat = AssetDatabase.LoadAssetAtPath<Material>(path);
+        if (mat == null)
+        {
+            mat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+            mat.SetTexture("_BaseMap", AssetDatabase.LoadAssetAtPath<Texture2D>(TrashCanTexturePath));
+            mat.SetFloat("_Smoothness", 0.3f);
+            mat.SetFloat("_AlphaClip", 1f);
+            mat.SetFloat("_Cutoff", 0.5f);
+            mat.EnableKeyword("_ALPHATEST_ON");
+            mat.SetOverrideTag("RenderType", "TransparentCutout");
+            mat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.AlphaTest;
+            mat.SetFloat("_Cull", 0f); // both sides
+            AssetDatabase.CreateAsset(mat, path);
+        }
+        return mat;
+    }
+
+    // All of `model`'s meshes merged into one, in `space`'s local coordinates, with each
+    // vertex's normal replaced by the average over all vertices at that spot. The outline
+    // shader pushes the surface out along these; averaging keeps hard edges (rim, base)
+    // from splitting the pushed-out shell open into gaps.
+    static Mesh BuildSmoothedCopy(Transform space, Transform model)
+    {
+        var verts = new List<Vector3>();
+        var normals = new List<Vector3>();
+        var tris = new List<int>();
+        foreach (MeshFilter mf in model.GetComponentsInChildren<MeshFilter>())
+        {
+            Mesh src = mf.sharedMesh;
+            if (src == null) continue;
+            Matrix4x4 toSpace = space.worldToLocalMatrix * mf.transform.localToWorldMatrix;
+            int start = verts.Count;
+            Vector3[] v = src.vertices;
+            Vector3[] n = src.normals;
+            for (int i = 0; i < v.Length; i++)
+            {
+                verts.Add(toSpace.MultiplyPoint3x4(v[i]));
+                normals.Add(n.Length == v.Length ? toSpace.MultiplyVector(n[i]).normalized : Vector3.zero);
+            }
+            for (int s = 0; s < src.subMeshCount; s++)
+                foreach (int t in src.GetTriangles(s)) tris.Add(start + t);
+        }
+
+        // Sum the normals of vertices that share a position (to 0.1 mm).
+        var smooth = new Dictionary<Vector3Int, Vector3>();
+        for (int i = 0; i < verts.Count; i++)
+        {
+            Vector3Int k = Vector3Int.RoundToInt(verts[i] * 10000f);
+            smooth.TryGetValue(k, out Vector3 sum);
+            smooth[k] = sum + normals[i];
+        }
+        for (int i = 0; i < verts.Count; i++)
+            normals[i] = smooth[Vector3Int.RoundToInt(verts[i] * 10000f)].normalized;
+
+        Mesh mesh = new Mesh();
+        mesh.indexFormat = verts.Count > 65000 ? UnityEngine.Rendering.IndexFormat.UInt32 : UnityEngine.Rendering.IndexFormat.UInt16;
+        mesh.SetVertices(verts);
+        mesh.SetNormals(normals);
+        mesh.SetTriangles(tris, 0);
+        mesh.RecalculateBounds();
+        return mesh;
     }
 
     // ---------- Shape outlines ----------

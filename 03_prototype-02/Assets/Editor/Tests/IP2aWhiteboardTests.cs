@@ -128,6 +128,13 @@ public class IP2aWhiteboardTests
         Assert.Greater(Vector3.Dot(new Vector3(toBin.x, 0f, toBin.z).normalized, facing.normalized), 0.99f, "Bin should be in front.");
         Assert.IsTrue(bin.visual.enabled, "Bin should show while a note is held.");
 
+        // Red outline: hidden until a held note is over the bin.
+        yield return null;
+        Assert.IsFalse(bin.outline.enabled, "Outline should stay hidden while the note isn't over the bin.");
+        bin.ShowReady();
+        yield return null;
+        Assert.IsTrue(bin.outline.enabled, "Outline should show while a note is over the bin.");
+
         // Drop zone: over the bin and low enough counts; at the player's feet or high up doesn't.
         Assert.IsTrue(bin.IsPositionOverBin(bin.transform.position + Vector3.up * 0.5f));
         Assert.IsFalse(bin.IsPositionOverBin(new Vector3(head.x, floorY + 0.1f, head.z)), "Feet shouldn't count any more.");
@@ -139,6 +146,7 @@ public class IP2aWhiteboardTests
         yield return null;
         Assert.IsTrue(a != null, "A note dropped at the player's feet shouldn't be deleted.");
         Assert.IsFalse(bin.visual.enabled, "Bin should hide when nothing is held.");
+        Assert.IsFalse(bin.outline.enabled, "Outline should hide with the bin.");
 
         // Pick it up again and let go just above the bin: deleted.
         manager.SelectEnter((IXRSelectInteractor)hand, (IXRSelectInteractable)grabA);
