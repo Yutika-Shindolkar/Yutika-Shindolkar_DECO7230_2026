@@ -585,6 +585,15 @@ MonoBehaviour:
   noteText: {fileID: 8015462129072828152}
   attachedMedia: 0
   mediaThumbnail: {fileID: 7633023253451259174}
+  visual: {fileID: 6939384888205325147}
+  noteCollider: {fileID: 1765170988124705119}
+  canvasRect: {fileID: 2068341556560691501}
+  maxMediaWidth: 0.3
+  maxMediaHeight: 0.3
+  minCardWidth: 0.22
+  cardPadding: 0.015
+  textGap: 0.012
+  maxTextHeight: 0.12
   textFontSize: 20
   maxScale: 2.2
   minFontSize: 6
@@ -1848,10 +1857,10 @@ RectTransform:
   m_Children: []
   m_Father: {fileID: 2068341556560691501}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0.7, y: 0.7}
-  m_AnchorMax: {x: 0.95, y: 0.95}
+  m_AnchorMin: {x: 0.5, y: 0.5}
+  m_AnchorMax: {x: 0.5, y: 0.5}
   m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 0, y: 0}
+  m_SizeDelta: {x: 100, y: 100}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &4880693085104590614
 CanvasRenderer:
@@ -1883,7 +1892,7 @@ MonoBehaviour:
       m_Calls: []
   m_Sprite: {fileID: 0}
   m_Type: 0
-  m_PreserveAspect: 0
+  m_PreserveAspect: 1
   m_FillCenter: 1
   m_FillMethod: 4
   m_FillAmount: 1

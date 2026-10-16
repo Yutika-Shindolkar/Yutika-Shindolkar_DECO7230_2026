@@ -14322,7 +14322,7 @@ MonoBehaviour:
   mediaBgInactive: {r: 0.93, g: 0.93, b: 0.93, a: 1}
   mediaBgActive: {r: 0.78, g: 0.78, b: 0.78, a: 1}
   mediaBgSelected: {r: 0.9, g: 0.55, b: 0.45, a: 1}
-  imagePlaceholder: {fileID: 0}
+  imagePlaceholder: {fileID: 21300000, guid: f5d8f089775649e4388e905fd790c236, type: 3}
   documentPlaceholder: {fileID: 0}
   videoPlaceholder: {fileID: 0}
   mic: {fileID: 2131578442}

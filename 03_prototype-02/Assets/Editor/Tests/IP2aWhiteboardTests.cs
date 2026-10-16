@@ -100,6 +100,73 @@ public class IP2aWhiteboardTests
     }
 
     [UnityTest]
+    public IEnumerator ImageNoteIsACardWithTextBelow()
+    {
+        EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+        yield return new EnterPlayMode();
+        yield return null;
+        Setup();
+        Assert.IsNotNull(panel.imagePlaceholder, "No placeholder image assigned.");
+
+        // 4:3 picture: full card width, height from the aspect ratio, text underneath.
+        NoteData note = SpawnNote(Vector3.zero);
+        note.SetLabel("A caption under the picture");
+        note.SetMedia(MediaType.Image, panel.imagePlaceholder);
+        Canvas.ForceUpdateCanvases();
+        Rect media = LocalRect(note, note.mediaThumbnail.rectTransform);
+        Rect text = LocalRect(note, note.noteText.rectTransform);
+        Bounds card = note.noteCollider.bounds;
+        Vector3 cardSize = note.transform.InverseTransformVector(card.size);
+        Assert.AreEqual(note.maxMediaWidth, media.width, 0.001f, "Image should fill the card width.");
+        Assert.AreEqual(note.maxMediaWidth * 3f / 4f, media.height, 0.001f, "Image height should follow its aspect ratio.");
+        Assert.LessOrEqual(text.yMax, media.yMin, "Text should sit below the image.");
+        Assert.AreEqual(note.maxMediaWidth + 2f * note.cardPadding, Mathf.Abs(cardSize.x), 0.001f, "Card should wrap the image.");
+        Assert.Greater(Mathf.Abs(cardSize.y), media.height + text.height, "Card should hold the image and the text.");
+        Assert.AreEqual(1f, note.transform.localScale.x, 0.0001f, "An image card isn't scaled up like a text note.");
+        foreach (VRHandleConnector h in note.GetComponentsInChildren<VRHandleConnector>(true))
+        {
+            Vector3 p = h.transform.localPosition;
+            bool outside = Mathf.Abs(p.x) > Mathf.Abs(cardSize.x) * 0.5f || Mathf.Abs(p.y) > Mathf.Abs(cardSize.y) * 0.5f;
+            Assert.IsTrue(outside, $"Handle {h.name} should sit outside the card's edge.");
+        }
+
+        // A very tall picture is capped in height (and keeps its shape), on a note-width card.
+        NoteData tall = SpawnNote(Vector3.right);
+        tall.SetMedia(MediaType.Image, MakeSprite(200, 2000));
+        Canvas.ForceUpdateCanvases();
+        media = LocalRect(tall, tall.mediaThumbnail.rectTransform);
+        Assert.AreEqual(tall.maxMediaHeight, media.height, 0.001f, "Tall image should stop at the max height.");
+        Assert.AreEqual(tall.maxMediaHeight * 0.1f, media.width, 0.001f, "Tall image should keep its aspect ratio.");
+        Assert.AreEqual(tall.minCardWidth, Mathf.Abs(tall.transform.InverseTransformVector(tall.noteCollider.bounds.size).x), 0.001f);
+
+        // A very wide, very large picture is capped at the max width.
+        NoteData wide = SpawnNote(Vector3.left);
+        wide.SetMedia(MediaType.Image, MakeSprite(4000, 1000));
+        Canvas.ForceUpdateCanvases();
+        media = LocalRect(wide, wide.mediaThumbnail.rectTransform);
+        Assert.AreEqual(wide.maxMediaWidth, media.width, 0.001f);
+        Assert.AreEqual(wide.maxMediaWidth / 4f, media.height, 0.001f);
+
+        yield return new ExitPlayMode();
+    }
+
+    // A RectTransform's rectangle in the note's own space (metres).
+    static Rect LocalRect(NoteData note, RectTransform rt)
+    {
+        Vector3[] c = new Vector3[4];
+        rt.GetWorldCorners(c);
+        Vector3 min = note.transform.InverseTransformPoint(c[0]);
+        Vector3 max = note.transform.InverseTransformPoint(c[2]);
+        return Rect.MinMaxRect(min.x, min.y, max.x, max.y);
+    }
+
+    static Sprite MakeSprite(int width, int height)
+    {
+        Texture2D tex = new Texture2D(width, height);
+        return Sprite.Create(tex, new Rect(0, 0, width, height), new Vector2(0.5f, 0.5f));
+    }
+
+    [UnityTest]
     public IEnumerator TrashDeletesNoteAndItsConnections()
     {
         EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);

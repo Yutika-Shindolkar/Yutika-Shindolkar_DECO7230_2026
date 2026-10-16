@@ -90,6 +90,39 @@ public class IP2aSnapshots
         yield return new ExitPlayMode();
     }
 
+    // Image notes: the picture across the top of the card, text underneath. One with the
+    // placeholder picture and a caption, one without text.
+    [UnityTest]
+    public IEnumerator ImageNotes()
+    {
+        EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+        yield return new EnterPlayMode();
+        yield return null;
+
+        NoteCreationPanel panel = Object.FindFirstObjectByType<NoteCreationPanel>(FindObjectsInactive.Include);
+        Object.FindFirstObjectByType<PromptNote>()?.Hide();
+        Camera cam = panel.headTransform.GetComponent<Camera>();
+
+        panel.CreateTestNote();
+        NoteData captioned = Object.FindObjectsByType<NoteData>(FindObjectsSortMode.None)[0];
+        captioned.SetLabel("Site visit: the north hills from the lookout");
+        captioned.SetMedia(MediaType.Image, panel.imagePlaceholder);
+        captioned.transform.position += panel.headTransform.right * -0.25f;
+
+        panel.CreateTestNote();
+        foreach (NoteData n in Object.FindObjectsByType<NoteData>(FindObjectsSortMode.None))
+        {
+            if (n == captioned) continue;
+            n.SetLabel("");
+            n.SetMedia(MediaType.Image, panel.imagePlaceholder);
+            n.transform.position += panel.headTransform.right * 0.25f;
+        }
+        yield return null;
+
+        Save(cam, "image_notes.png");
+        yield return new ExitPlayMode();
+    }
+
     // One note of every shape with its handles revealed, to check handle placement.
     [UnityTest]
     public IEnumerator HandlesOnEveryShape()

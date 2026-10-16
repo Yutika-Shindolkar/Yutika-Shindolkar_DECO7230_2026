@@ -388,6 +388,7 @@ public static class IP2aSceneBuilder
         so.FindProperty("mediaInactiveColor").colorValue = mediaLabelInactive;
         so.FindProperty("mediaActiveColor").colorValue = mediaLabelActive;
         so.FindProperty("mediaSelectedColor").colorValue = Color.white;
+        so.FindProperty("imagePlaceholder").objectReferenceValue = GetOrCreateImagePlaceholder();
 
         SerializedProperty mediaButtonsProp = so.FindProperty("mediaButtons");
         mediaButtonsProp.arraySize = 3;
@@ -482,19 +483,21 @@ public static class IP2aSceneBuilder
         textRect.anchorMax = Vector2.one;
         textRect.sizeDelta = Vector2.zero;
 
+        // Placed and sized at runtime by NoteData.LayoutMediaCard: full card width at the
+        // top, with the text underneath.
         GameObject thumbGO = new GameObject("MediaThumbnail");
         thumbGO.transform.SetParent(canvasGO.transform, false);
         Image thumb = thumbGO.AddComponent<Image>();
-        RectTransform thumbRect = thumbGO.GetComponent<RectTransform>();
-        thumbRect.anchorMin = new Vector2(0.7f, 0.7f);
-        thumbRect.anchorMax = new Vector2(0.95f, 0.95f);
-        thumbRect.sizeDelta = Vector2.zero;
+        thumb.preserveAspect = true;
         thumbGO.SetActive(false);
 
         NoteData data = note.AddComponent<NoteData>();
         data.shape = shape;
         data.noteText = text;
         data.mediaThumbnail = thumb;
+        data.visual = visual.transform;
+        data.noteCollider = col;
+        data.canvasRect = canvasRect;
 
         XRGrabInteractable grab = note.AddComponent<XRGrabInteractable>();
         // A note should stay exactly where you let go of it, not keep sailing across the
@@ -555,6 +558,50 @@ public static class IP2aSceneBuilder
         GameObject prefab = PrefabUtility.SaveAsPrefabAsset(note, path);
         Object.DestroyImmediate(note);
         return prefab;
+    }
+
+    // Stand-in picture for "Add Image" until real images can be attached: a simple 4:3
+    // landscape (sky, sun, two hills), drawn once into a PNG and imported as a sprite.
+    const string ImagePlaceholderPath = "Assets/Textures/ImagePlaceholder.png";
+
+    static Sprite GetOrCreateImagePlaceholder()
+    {
+        if (!File.Exists(ImagePlaceholderPath))
+        {
+            const int w = 640, h = 480;
+            var tex = new Texture2D(w, h, TextureFormat.RGBA32, false);
+            var pixels = new Color32[w * h];
+            Color skyTop = new Color(0.45f, 0.68f, 0.92f), skyLow = new Color(0.86f, 0.93f, 0.98f);
+            Color sun = new Color(1f, 0.82f, 0.35f);
+            Color farHill = new Color(0.47f, 0.70f, 0.48f), nearHill = new Color(0.30f, 0.55f, 0.33f);
+            for (int y = 0; y < h; y++)
+            {
+                for (int x = 0; x < w; x++)
+                {
+                    float u = x / (float)w, v = y / (float)h;
+                    Color c = Color.Lerp(skyLow, skyTop, v);
+                    if (new Vector2(x - w * 0.72f, y - h * 0.72f).magnitude < h * 0.1f) c = sun;
+                    if (v < 0.42f + 0.12f * Mathf.Sin(u * 5f + 0.6f)) c = farHill;
+                    if (v < 0.25f + 0.10f * Mathf.Sin(u * 4f + 2.4f)) c = nearHill;
+                    pixels[y * w + x] = c;
+                }
+            }
+            tex.SetPixels32(pixels);
+            Directory.CreateDirectory(Path.GetDirectoryName(ImagePlaceholderPath));
+            File.WriteAllBytes(ImagePlaceholderPath, tex.EncodeToPNG());
+            Object.DestroyImmediate(tex);
+            AssetDatabase.ImportAsset(ImagePlaceholderPath);
+        }
+
+        var importer = (TextureImporter)AssetImporter.GetAtPath(ImagePlaceholderPath);
+        if (importer.textureType != TextureImporterType.Sprite)
+        {
+            importer.textureType = TextureImporterType.Sprite;
+            importer.spriteImportMode = SpriteImportMode.Single;
+            importer.mipmapEnabled = true; // seen small and at an angle in the headset
+            importer.SaveAndReimport();
+        }
+        return AssetDatabase.LoadAssetAtPath<Sprite>(ImagePlaceholderPath);
     }
 
     static GameObject BuildConnectionLinePrefab(Material lineMat)
