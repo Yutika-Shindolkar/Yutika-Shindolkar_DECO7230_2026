@@ -2,13 +2,11 @@ using UnityEngine;
 using UnityEngine.XR.Interaction.Toolkit;
 using UnityEngine.XR.Interaction.Toolkit.Interactables;
 
-// Shows the foot-level trash bin while this note is being held, and deletes the note
-// if it's released while overlapping the bin. Replaces the earlier static-trash-zone design.
+// Shows the trash bin (on the floor ahead of the player) while this note is being held,
+// lights the bin up while the note is over it, and deletes the note if it's released there.
 [RequireComponent(typeof(XRGrabInteractable))]
 public class NoteTrashHandler : MonoBehaviour
 {
-    public float trashCheckRadius = 0.2f;
-
     XRGrabInteractable grab;
 
     void Awake()
@@ -28,6 +26,13 @@ public class NoteTrashHandler : MonoBehaviour
         grab.selectExited.RemoveListener(OnReleased);
     }
 
+    void Update()
+    {
+        FootTrashBin bin = FootTrashBin.Instance;
+        if (grab.isSelected && bin != null && bin.IsPositionOverBin(transform.position))
+            bin.ShowReady();
+    }
+
     void OnGrabbed(SelectEnterEventArgs args)
     {
         if (FootTrashBin.Instance != null) FootTrashBin.Instance.RegisterHoldStart();
@@ -37,7 +42,7 @@ public class NoteTrashHandler : MonoBehaviour
     {
         if (FootTrashBin.Instance == null) return;
 
-        bool overBin = FootTrashBin.Instance.IsPositionOverBin(transform.position, trashCheckRadius);
+        bool overBin = FootTrashBin.Instance.IsPositionOverBin(transform.position);
         FootTrashBin.Instance.RegisterHoldEnd();
 
         if (overBin)

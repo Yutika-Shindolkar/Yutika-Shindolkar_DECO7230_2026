@@ -118,12 +118,31 @@ public class IP2aWhiteboardTests
         XRGrabInteractable grabA = a.GetComponent<XRGrabInteractable>();
         manager.SelectEnter((IXRSelectInteractor)hand, (IXRSelectInteractable)grabA);
 
+        // The bin appears on the floor about 2 m ahead of where the player faces, so it's in view.
         Vector3 head = panel.headTransform.position;
-        Assert.AreEqual(head.x, bin.transform.position.x, 0.001f, "Bin should be under the player's head.");
-        Assert.AreEqual(head.z, bin.transform.position.z, 0.001f, "Bin should be under the player's head.");
-        Assert.IsTrue(bin.GetComponent<Renderer>().enabled, "Bin should show while a note is held.");
+        Vector3 toBin = bin.transform.position - head;
+        float floorY = GameObject.Find("XR Origin (XR Rig)").transform.position.y;
+        Assert.AreEqual(floorY, bin.transform.position.y, 0.01f, "Bin should sit on the floor.");
+        Assert.AreEqual(bin.distanceAhead, new Vector2(toBin.x, toBin.z).magnitude, 0.01f, "Bin should be 2 m ahead.");
+        Vector3 facing = panel.headTransform.forward; facing.y = 0f;
+        Assert.Greater(Vector3.Dot(new Vector3(toBin.x, 0f, toBin.z).normalized, facing.normalized), 0.99f, "Bin should be in front.");
+        Assert.IsTrue(bin.visual.enabled, "Bin should show while a note is held.");
 
-        a.transform.position = bin.transform.position + Vector3.up * 0.05f;
+        // Drop zone: over the bin and low enough counts; at the player's feet or high up doesn't.
+        Assert.IsTrue(bin.IsPositionOverBin(bin.transform.position + Vector3.up * 0.5f));
+        Assert.IsFalse(bin.IsPositionOverBin(new Vector3(head.x, floorY + 0.1f, head.z)), "Feet shouldn't count any more.");
+        Assert.IsFalse(bin.IsPositionOverBin(bin.transform.position + Vector3.up * 1.5f), "Too high above the bin shouldn't count.");
+
+        // Let go at the feet: the note survives.
+        a.transform.position = new Vector3(head.x, floorY + 0.1f, head.z);
+        manager.SelectExit((IXRSelectInteractor)hand, (IXRSelectInteractable)grabA);
+        yield return null;
+        Assert.IsTrue(a != null, "A note dropped at the player's feet shouldn't be deleted.");
+        Assert.IsFalse(bin.visual.enabled, "Bin should hide when nothing is held.");
+
+        // Pick it up again and let go just above the bin: deleted.
+        manager.SelectEnter((IXRSelectInteractor)hand, (IXRSelectInteractable)grabA);
+        a.transform.position = bin.transform.position + Vector3.up * 0.5f;
         manager.SelectExit((IXRSelectInteractor)hand, (IXRSelectInteractable)grabA);
         // Destroy() takes effect at the end of the frame, for the note and then its lines.
         yield return null;
@@ -133,7 +152,7 @@ public class IP2aWhiteboardTests
         Assert.AreEqual(0, Object.FindObjectsByType<ConnectionLine>(FindObjectsSortMode.None).Length,
             "Its connection line and label should be removed too.");
         Assert.AreEqual(1, TourManager.tourPath.Count, "Deleted note should leave the Tour list.");
-        Assert.IsFalse(bin.GetComponent<Renderer>().enabled, "Bin should hide again.");
+        Assert.IsFalse(bin.visual.enabled, "Bin should hide again.");
 
         yield return new ExitPlayMode();
     }

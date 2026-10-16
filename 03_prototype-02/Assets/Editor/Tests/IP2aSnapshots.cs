@@ -159,6 +159,30 @@ public class IP2aSnapshots
 
         yield return new ExitPlayMode();
     }
+    // What the player sees looking straight ahead while holding a note: the trash bin should
+    // be visible near the bottom of the view. Uses a headset-like field of view.
+    [UnityTest]
+    public IEnumerator TrashBinInView()
+    {
+        EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+        yield return new EnterPlayMode();
+        yield return null;
+
+        NoteCreationPanel panel = Object.FindFirstObjectByType<NoteCreationPanel>(FindObjectsInactive.Include);
+        Object.FindFirstObjectByType<PromptNote>()?.Hide();
+        Camera cam = panel.headTransform.GetComponent<Camera>();
+        // Standing height, looking level, roughly a Quest 2's vertical field of view.
+        cam.transform.position = new Vector3(cam.transform.position.x, 1.6f, cam.transform.position.z);
+        cam.transform.rotation = Quaternion.LookRotation(Vector3.ProjectOnPlane(cam.transform.forward, Vector3.up));
+        cam.fieldOfView = 90f;
+
+        FootTrashBin.Instance.RegisterHoldStart();
+        yield return null;
+        Save(cam, "trash_bin_in_view.png");
+        FootTrashBin.Instance.RegisterHoldEnd();
+
+        yield return new ExitPlayMode();
+    }
     static void Save(Camera cam, string fileName)
     {
         const int width = 1280, height = 960;

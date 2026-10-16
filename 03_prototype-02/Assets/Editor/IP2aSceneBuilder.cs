@@ -1129,26 +1129,57 @@ public static class IP2aSceneBuilder
         }
         return result;
     }
-    // Foot-level trash bin for the delete gesture (FootTrashBin.cs / NoteTrashHandler.cs,
-    // both already in Assets/Scripts - this is just the missing piece, the GameObject
-    // itself was never built into the scene). A flat rectangle standing in for the real
-    // dustbin model Yutika will bring in later: FootTrashBin only reads this object's own
-    // Renderer/Collider/Transform, so swapping the visual later (new mesh, same
-    // GameObject and components) won't need any script changes.
+    // Trash bin for the delete gesture (FootTrashBin.cs / NoteTrashHandler.cs). A simple
+    // cylinder standing in for a real bin model, with a "Drop here to delete" label above
+    // it. The root carries FootTrashBin and is placed on the floor ahead of the player at
+    // runtime; the visible parts are children, so a real model can replace BinVisual later
+    // without script changes (point FootTrashBin.visual at its renderer).
+    const float BinRadius = 0.22f;
+    const float BinHeight = 0.4f;
+
     static void BuildTrashBin(GameObject rig, Transform head)
     {
         GameObject bin = FindOrCreate("FootTrashBin");
-        SetupFlatShape(bin, RectOutline(0.35f, 0.35f), 0.02f, new Color(0.75f, 0.35f, 0.35f), "FootTrashBin");
-        // Starting position only - FootTrashBin.Update() re-tracks the rig's position every
-        // frame itself once a note is picked up, this is just where it sits at edit time.
-        bin.transform.position = rig.transform.position;
+        // Older versions drew the bin on the root itself as a flat square.
+        foreach (Component old in new Component[] { bin.GetComponent<MeshRenderer>(), bin.GetComponent<MeshFilter>(), bin.GetComponent<BoxCollider>() })
+            if (old != null) Object.DestroyImmediate(old);
+        bin.transform.position = rig.transform.position; // starting position only; placed at runtime
         bin.transform.rotation = Quaternion.identity;
+
+        // Cylinder: a 24-sided outline extruded by the bin's height, stood upright.
+        GameObject body = FindOrCreateChild(bin.transform, "BinVisual");
+        SetupFlatShape(body, RegularPolygon(BinRadius, 24, 0f), BinHeight, new Color(0.75f, 0.35f, 0.35f), "FootTrashBin");
+        RemoveCollider(body); // not something to grab or aim at
+        body.transform.localPosition = new Vector3(0f, BinHeight * 0.5f, 0f);
+        body.transform.localRotation = Quaternion.Euler(-90f, 0f, 0f);
+
+        // The text sits under a plain holder that does the positioning (the text's own
+        // RectTransform position didn't persist when set from here).
+        Transform strayLabel = bin.transform.Find("BinLabel");
+        if (strayLabel != null) Object.DestroyImmediate(strayLabel.gameObject);
+        GameObject labelHolder = FindOrCreateChild(bin.transform, "BinLabelHolder");
+        labelHolder.transform.localPosition = new Vector3(0f, BinHeight + 0.15f, 0f);
+        labelHolder.transform.localRotation = Quaternion.identity;
+        GameObject labelGO = FindOrCreateChild(labelHolder.transform, "BinLabel");
+        TextMeshPro label = labelGO.GetComponent<TextMeshPro>();
+        if (label == null) label = labelGO.AddComponent<TextMeshPro>();
+        label.text = "Drop here to delete";
+        label.fontSize = 20f; // about 6 cm letters: readable from 2 m away
+        label.alignment = TextAlignmentOptions.Center;
+        label.color = new Color(0.55f, 0.2f, 0.2f);
+        label.rectTransform.sizeDelta = new Vector2(40f, 8f);
+        labelGO.transform.localPosition = Vector3.zero;
+        labelGO.transform.localRotation = Quaternion.identity;
+        labelGO.transform.localScale = Vector3.one * 0.03f;
 
         FootTrashBin trashBin = bin.GetComponent<FootTrashBin>();
         if (trashBin == null) trashBin = bin.AddComponent<FootTrashBin>();
         trashBin.playerRoot = rig.transform; // XR Origin's own root = floor-level position (Tracking Origin Mode: Floor)
-        trashBin.headTransform = head;       // follows where the player stands, not the rig's origin
-        trashBin.footOffsetY = 0.01f; // just proud of the floor plane, avoids z-fighting
+        trashBin.headTransform = head;       // where the player is and which way they face
+        trashBin.visual = body.GetComponent<Renderer>();
+        trashBin.footOffsetY = 0f;
+        trashBin.dropRadius = BinRadius + 0.08f;
+        trashBin.dropHeight = BinHeight + 0.4f;
     }
 
     // ---------- Shape outlines ----------

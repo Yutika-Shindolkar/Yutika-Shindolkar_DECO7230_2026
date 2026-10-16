@@ -1724,7 +1724,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7fd38b787810e624e8b6742ba208ce2a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::NoteTrashHandler
-  trashCheckRadius: 0.2
 --- !u!114 &3322967802701572496
 MonoBehaviour:
   m_ObjectHideFlags: 0
