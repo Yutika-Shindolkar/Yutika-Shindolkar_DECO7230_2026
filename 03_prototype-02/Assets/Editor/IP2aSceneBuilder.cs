@@ -348,8 +348,8 @@ public static class IP2aSceneBuilder
             if (old != null) Object.DestroyImmediate(old.gameObject);
         }
 
-        // Mic - a permanent fixture mounted on the panel's right edge (not a spawnable prop).
-        Transform mic = BuildMic(panelGO, panelWidth);
+        // Mic - a permanent fixture clamped to the panel's right edge (not a spawnable prop).
+        Transform mic = BuildMic(panelGO, panelWidth, cardBorderThickness);
 
         // Wire the panel script fields
         var so = new SerializedObject(panel);
@@ -1080,89 +1080,148 @@ public static class IP2aSceneBuilder
         return prefab;
     }
 
-    // The mic: the boom-arm mic model as one grabbable object beside the panel's right edge,
-    // on the front (user-facing) side. It can be grabbed and moved anywhere (no audio yet),
-    // and NoteCreationPanel puts it back beside the panel each time the panel opens.
+    // The mic: the boom-arm mic model clamped to the panel's right edge, on the front
+    // (user-facing) side, like a mic clipped to the side of a desk. The clamp and a short
+    // horizontal arm stay fixed to the panel; only two joints move (MicBoomArm): the elbow
+    // tilts the upright arm, and the head joint turns the mic. NoteCreationPanel puts both
+    // joints back to their rest pose each time the panel opens.
     //
-    // The model's meshes sit about 2 m from its own origin, so it's wrapped in a "Mic"
-    // object whose origin is the model's visual centre; grabbing then works from where the
-    // mic actually appears. Built once - an existing Mic is only re-posed, never
-    // re-instantiated, so the scene doesn't churn on rebuilds.
-    const float MicHeight = 0.22f;  // metres, top of the mic to the bottom of its clamp
-    const float MicHeightOnPanel = 0.03f; // centre of the mic relative to the panel centre
-    static readonly Vector3 MicRotation = new Vector3(0f, 215f, 0f); // clamp toward the panel, head angled toward the user
+    // The model is one flat set of meshes (about 2 m from its own origin), so it's copied and
+    // taken apart here: Cylinder003, Rectangle006 and Rectangle008 are the clamp, Object009
+    // is the horizontal arm (shortened), Object005 is the upright arm, and Object003 / Object001 /
+    // Rectangle004 / Rectangle007 are the mic head. Rebuilt on every run.
+    const float MicHeight = 0.28f;       // metres, top of the mic to the bottom of its clamp
+    const float MicClampHeight = -0.06f; // clamp centre relative to the panel centre
+    const float MicArmLength = 0.35f;    // horizontal arm, as a fraction of the original length
+    static readonly Vector3 MicRotation = new Vector3(0f, 200f, 0f); // arm runs out from the panel and a little toward the user
 
-    static Transform BuildMic(GameObject panelGO, float panelWidth)
+    static Transform BuildMic(GameObject panelGO, float panelWidth, float cardBorder)
     {
         // Older versions: a mount with a separate base, arm and a clamped head.
         Transform legacy = panelGO.transform.Find("MicMount");
         if (legacy != null) Object.DestroyImmediate(legacy.gameObject);
+        Transform previous = panelGO.transform.Find("Mic");
+        if (previous != null) Object.DestroyImmediate(previous.gameObject);
 
-        GameObject mic = FindOrCreateChild(panelGO.transform, "Mic");
-        mic.transform.localPosition = new Vector3(panelWidth * 0.5f, MicHeightOnPanel, 0f);
+        GameObject mic = new GameObject("Mic");
+        mic.transform.SetParent(panelGO.transform, false);
+        mic.transform.localPosition = Vector3.zero;
         mic.transform.localRotation = Quaternion.Euler(MicRotation);
-        mic.transform.localScale = Vector3.one;
 
-        Transform model = mic.transform.Find("MicModel");
-        if (model == null)
+        GameObject source = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/mic,fbx.fbx");
+        if (source == null)
         {
-            GameObject source = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/mic,fbx.fbx");
-            if (source == null)
-            {
-                Debug.LogWarning("IP2aSceneBuilder: mic model not found at Assets/Models/mic,fbx.fbx.");
-                return mic.transform;
-            }
-            GameObject instance = (GameObject)PrefabUtility.InstantiatePrefab(source, mic.transform);
-            instance.name = "MicModel";
-            model = instance.transform;
-            model.localRotation = Quaternion.identity;
+            Debug.LogWarning("IP2aSceneBuilder: mic model not found at Assets/Models/mic,fbx.fbx.");
+            return mic.transform;
+        }
+        // A plain copy (not a linked prefab instance) so its parts can be regrouped.
+        GameObject copy = Object.Instantiate(source, mic.transform);
+        copy.name = "MicModel";
+        Transform model = copy.transform;
+        model.localRotation = Quaternion.identity;
 
-            // Scale to MicHeight, then shift so the visual centre sits on Mic's origin.
-            model.localScale = Vector3.one;
-            model.localPosition = Vector3.zero;
-            Bounds raw = LocalRendererBounds(mic.transform, model);
-            float scale = MicHeight / raw.size.y;
-            model.localScale = Vector3.one * scale;
-            Bounds scaled = LocalRendererBounds(mic.transform, model);
-            model.localPosition = -scaled.center;
+        // Scale to MicHeight, centred on Mic's origin.
+        model.localScale = Vector3.one;
+        model.localPosition = Vector3.zero;
+        Bounds raw = LocalRendererBounds(mic.transform, model);
+        model.localScale = Vector3.one * (MicHeight / raw.size.y);
+        Bounds scaled = LocalRendererBounds(mic.transform, model);
+        model.localPosition = -scaled.center;
+
+        Transform[] all = model.GetComponentsInChildren<Transform>();
+        Transform Part(string n) => System.Array.Find(all, t => t.name == n);
+        Transform armBar = Part("Object009"), uprightBar = Part("Object005");
+        Transform[] headParts = { Part("Object003"), Part("Object001"), Part("Rectangle004"), Part("Rectangle007") };
+        Transform[] clampParts = { Part("Cylinder003"), Part("Rectangle006"), Part("Rectangle008") };
+        if (armBar == null || uprightBar == null || System.Array.IndexOf(headParts, null) >= 0 || System.Array.IndexOf(clampParts, null) >= 0)
+        {
+            Debug.LogWarning("IP2aSceneBuilder: mic model is missing a part; leaving it in one piece.");
+            return mic.transform;
         }
 
-        // Place it from its measured shape: its nearest point just touching the panel's
-        // right edge (so the clamp looks clamped on), and all of it in front of the panel face.
-        Bounds onPanel = LocalRendererBounds(panelGO.transform, model);
+        // Joint positions, in the model's own coordinates.
+        Vector3 clampPos = model.InverseTransformPoint(clampParts[0].position);
+        Vector3 elbowPos = model.InverseTransformPoint(uprightBar.position);
+        Vector3 headPos = model.InverseTransformPoint(headParts[0].position);
+
+        // Horizontal arm: squashed along its length (about the clamp end), then the elbow
+        // and everything above it slides in to meet its new end.
+        Transform armPivot = NewMicPart(model, "ArmPivot", clampPos);
+        armBar.SetParent(armPivot, true);
+        armPivot.localScale = new Vector3(MicArmLength, 1f, 1f);
+        Vector3 slide = (clampPos - elbowPos) * (1f - MicArmLength); // toward the clamp
+
+        Transform elbow = NewMicPart(model, "Elbow", elbowPos);
+        uprightBar.SetParent(elbow, true);
+        Transform head = NewMicPart(elbow, "Head", headPos - elbowPos);
+        foreach (Transform part in headParts) part.SetParent(head, true);
+        elbow.localPosition += slide;
+
+        // Grab areas: a capsule along the upright arm, a sphere around the mic head.
+        float perMetre = 1f / model.lossyScale.x;
+        Vector3 armTop = elbow.InverseTransformPoint(head.position);
+        GameObject armHandle = NewMicHandle(elbow, "ElbowHandle", armTop * 0.5f);
+        armHandle.transform.localRotation = Quaternion.LookRotation(armTop.normalized);
+        CapsuleCollider armCol = armHandle.AddComponent<CapsuleCollider>();
+        armCol.direction = 2;
+        armCol.radius = 0.03f * perMetre;
+        armCol.height = armTop.magnitude + armCol.radius * 2f;
+
+        Bounds headBounds = LocalRendererBounds(head, head);
+        GameObject headHandle = NewMicHandle(head, "HeadHandle", headBounds.center);
+        SphereCollider headCol = headHandle.AddComponent<SphereCollider>();
+        headCol.radius = 0.045f * perMetre;
+
+        MicBoomArm boom = mic.AddComponent<MicBoomArm>();
+        boom.elbow.pivot = elbow;
+        boom.elbow.handle = armHandle.AddComponent<XRSimpleInteractable>();
+        boom.elbow.maxSwing = 35f;
+        boom.head.pivot = head;
+        boom.head.handle = headHandle.AddComponent<XRSimpleInteractable>();
+        boom.head.maxSwing = 70f;
+
+        // Clamp it on: the clamp's edge nearest the panel just grips the right edge, and it
+        // sits in the panel's own plane, at a fixed height.
+        Bounds clamp = LocalRendererBounds(panelGO.transform, clampParts);
         Vector3 pos = mic.transform.localPosition;
-        pos.x += panelWidth * 0.5f + 0.005f - onPanel.min.x;
-        pos.z += -0.012f - onPanel.max.z;
+        pos.x += panelWidth * 0.5f + cardBorder - 0.016f - clamp.min.x;
+        pos.y += MicClampHeight - clamp.center.y;
+        pos.z += -clamp.center.z;
         mic.transform.localPosition = pos;
-
-        // Grab area: a box around the whole model.
-        Bounds bounds = LocalRendererBounds(mic.transform, model);
-        BoxCollider col = mic.GetComponent<BoxCollider>();
-        if (col == null) col = mic.AddComponent<BoxCollider>();
-        col.center = bounds.center;
-        col.size = bounds.size;
-
-        Rigidbody rb = mic.GetComponent<Rigidbody>();
-        if (rb == null) rb = mic.AddComponent<Rigidbody>();
-        rb.useGravity = false;
-        rb.isKinematic = true; // stays where it's let go, like the notes
-
-        XRGrabInteractable grab = mic.GetComponent<XRGrabInteractable>();
-        if (grab == null) grab = mic.AddComponent<XRGrabInteractable>();
-        grab.throwOnDetach = false;
-        grab.useDynamicAttach = true; // hold it by the point you grabbed, not its centre
-        grab.farAttachMode = UnityEngine.XR.Interaction.Toolkit.Attachment.InteractableFarAttachMode.Far;
-        grab.colliders.Clear();
-        grab.colliders.Add(col);
         return mic.transform;
     }
 
-    // Combined renderer bounds of `model`, in `space`'s local coordinates.
-    static Bounds LocalRendererBounds(Transform space, Transform model)
+    static Transform NewMicPart(Transform parent, string name, Vector3 localPos)
+    {
+        GameObject go = new GameObject(name);
+        go.transform.SetParent(parent, false);
+        go.transform.localPosition = localPos;
+        return go.transform;
+    }
+
+    static GameObject NewMicHandle(Transform parent, string name, Vector3 localPos)
+    {
+        GameObject go = NewMicPart(parent, name, localPos).gameObject;
+        go.AddComponent<MicJointHandle>();
+        return go;
+    }
+
+    static Bounds LocalRendererBounds(Transform space, Transform model) =>
+        LocalRendererBounds(space, model.GetComponentsInChildren<Renderer>());
+
+    static Bounds LocalRendererBounds(Transform space, Transform[] parts)
+    {
+        var renderers = new List<Renderer>();
+        foreach (Transform t in parts) renderers.AddRange(t.GetComponentsInChildren<Renderer>());
+        return LocalRendererBounds(space, renderers);
+    }
+
+    // Combined renderer bounds, in `space`'s local coordinates.
+    static Bounds LocalRendererBounds(Transform space, IEnumerable<Renderer> renderers)
     {
         bool first = true;
         Bounds result = new Bounds();
-        foreach (Renderer r in model.GetComponentsInChildren<Renderer>())
+        foreach (Renderer r in renderers)
         {
             Bounds wb = r.bounds;
             for (int i = 0; i < 8; i++)
@@ -1176,6 +1235,7 @@ public static class IP2aSceneBuilder
         }
         return result;
     }
+
     // Trash bin for the delete gesture (FootTrashBin.cs / NoteTrashHandler.cs): the trash can
     // model with a "Drop here to delete" label above it. The root carries FootTrashBin and is
     // placed on the floor ahead of the player at runtime.

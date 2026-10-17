@@ -5,8 +5,8 @@ using UnityEngine.XR.Interaction.Toolkit.Interactables;
 
 // World-space panel that appears after a clap. Lets the user pick a shape, type a
 // short note, and an optional placeholder media attachment, then Discard or Create.
-// The mic is a grabbable model that lives beside the panel (built by IP2aSceneBuilder.BuildMic);
-// it can be moved anywhere, and goes back to its spot beside the panel when the panel opens.
+// The mic is clamped to the panel's edge (built by IP2aSceneBuilder.BuildMic); its two joints
+// can be turned (MicBoomArm), and go back to their rest pose when the panel opens.
 public class NoteCreationPanel : MonoBehaviour
 {
     [Header("Placement")]
@@ -58,25 +58,18 @@ public class NoteCreationPanel : MonoBehaviour
     MediaType pendingMedia = MediaType.None;
     int selectedShapeIndex = -1;
     int hoveredShapeIndex = -1;
-    Vector3 micHomePosition;
-    Quaternion micHomeRotation;
 
     void Awake()
     {
-        if (mic != null)
-        {
-            micHomePosition = mic.localPosition;
-            micHomeRotation = mic.localRotation;
-        }
         gameObject.SetActive(false);
     }
 
-    // Puts the mic back beside the panel, wherever it was last left.
+    // Straightens the mic arm and head back to how they were built.
     void ReturnMic()
     {
-        if (mic == null || mic.parent != transform) return;
-        mic.localPosition = micHomePosition;
-        mic.localRotation = micHomeRotation;
+        if (mic == null) return;
+        MicBoomArm boom = mic.GetComponent<MicBoomArm>();
+        if (boom != null) boom.ResetPose();
     }
 
     public void OpenPanel()

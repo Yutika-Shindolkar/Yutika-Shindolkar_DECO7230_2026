@@ -208,10 +208,11 @@ public class IP2aControllerRayTests
         yield return new ExitPlayMode();
     }
 
-    // The mic beside the creation panel: grab it with the ray, move it, let go - it stays
-    // where it was left, and goes back beside the panel when the panel next opens.
+    // The mic clamped to the creation panel: the mic itself never moves, but grabbing the
+    // upright arm tilts the elbow joint and grabbing the head turns the head joint. They stay
+    // where they were left, and go back to rest when the panel next opens.
     [UnityTest]
-    public IEnumerator MicCanBeGrabbedMovedAndReturns()
+    public IEnumerator MicJointsTurnAndReturn()
     {
         EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
         yield return new EnterPlayMode();
@@ -230,42 +231,50 @@ public class IP2aControllerRayTests
         yield return null;
         Transform mic = panel.mic;
         Assert.IsNotNull(mic, "Panel should know its mic.");
+        MicBoomArm boom = mic.GetComponent<MicBoomArm>();
+        Assert.IsNotNull(boom, "The mic should have its two joints.");
+        Assert.IsNull(mic.GetComponent<XRGrabInteractable>(), "The mic as a whole must not be grabbable.");
         Vector3 homeLocal = mic.localPosition;
-        XRGrabInteractable grab = mic.GetComponent<XRGrabInteractable>();
 
-        // In front of the panel face: the mic must be on the user's side, not behind.
-        Vector3 micInPanel = panel.transform.InverseTransformPoint(mic.GetComponent<Collider>().bounds.center);
-        Assert.Less(micInPanel.z, 0f, "The mic should sit in front of the panel, not behind it.");
+        // In front of the panel face or in its plane, never behind it.
+        Vector3 headInPanel = panel.transform.InverseTransformPoint(boom.head.handle.transform.position);
+        Assert.Less(headInPanel.z, 0.01f, "The mic head should be on the user's side of the panel.");
 
-        Vector3 aim = mic.GetComponent<Collider>().bounds.center;
+        Vector3 aim = boom.head.handle.transform.position;
         right.position = aim - panel.transform.forward * 0.8f;
         right.rotation = Quaternion.LookRotation(aim - right.position);
         float t0 = Time.realtimeSinceStartup;
-        while (!nearFar.interactablesHovered.Contains(grab) && Time.realtimeSinceStartup - t0 < 3f)
+        while (!nearFar.interactablesHovered.Contains(boom.head.handle) && Time.realtimeSinceStartup - t0 < 3f)
             yield return null;
-        Assert.IsTrue(nearFar.interactablesHovered.Contains(grab), "The ray should hover the mic.");
+        Assert.IsTrue(nearFar.interactablesHovered.Contains(boom.head.handle), "The ray should hover the mic head.");
 
         nearFar.selectInput.QueueManualState(true, 1f, true, false);
         for (int i = 0; i < 3; i++) yield return null;
-        Assert.IsTrue(grab.isSelected, "Grip should grab the mic.");
+        Assert.IsTrue(boom.head.handle.isSelected, "Grip should grab the mic head.");
 
-        Vector3 before = mic.position;
-        right.rotation = Quaternion.LookRotation(aim + Vector3.up * 0.25f - right.position);
+        right.rotation = Quaternion.LookRotation(aim + Vector3.up * 0.15f - right.position);
         t0 = Time.realtimeSinceStartup;
         while (Time.realtimeSinceStartup - t0 < 1f) yield return null;
         nearFar.selectInput.QueueManualState(false, 0f, false, true);
         for (int i = 0; i < 3; i++) yield return null;
 
-        Vector3 moved = mic.position;
-        Assert.Greater(Vector3.Distance(before, moved), 0.1f, "The mic should move with the ray.");
-        yield return new WaitForSeconds(0.3f);
-        Assert.Less(Vector3.Distance(moved, mic.position), 0.001f, "Let go, the mic should stay put.");
+        float turned = Quaternion.Angle(boom.head.restRotation, boom.head.pivot.localRotation);
+        Assert.Greater(turned, 5f, "The head should turn with the ray.");
+        Assert.LessOrEqual(turned, boom.head.maxSwing + 0.5f, "The head should stop at its limit.");
+        Assert.AreEqual(0f, Quaternion.Angle(boom.elbow.restRotation, boom.elbow.pivot.localRotation), 0.01f,
+            "Turning the head must not move the elbow.");
+        Assert.Less(Vector3.Distance(homeLocal, mic.localPosition), 0.0001f, "The clamped mic itself must not move.");
         Assert.AreEqual(panel.transform, mic.parent, "The mic should stay part of the panel.");
+
+        Quaternion left = boom.head.pivot.localRotation;
+        yield return new WaitForSeconds(0.3f);
+        Assert.Less(Quaternion.Angle(left, boom.head.pivot.localRotation), 0.01f, "Let go, the head should stay put.");
 
         panel.ClosePanel();
         Object.FindFirstObjectByType<ClapGestureDetector>().onClap.Invoke();
         yield return null;
-        Assert.Less(Vector3.Distance(homeLocal, mic.localPosition), 0.001f, "Reopening the panel should put the mic back.");
+        Assert.Less(Quaternion.Angle(boom.head.restRotation, boom.head.pivot.localRotation), 0.01f,
+            "Reopening the panel should straighten the head.");
 
         yield return new ExitPlayMode();
     }
