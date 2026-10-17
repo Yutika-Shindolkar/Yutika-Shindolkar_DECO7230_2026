@@ -73,12 +73,29 @@ public class VRKeyboard : MonoBehaviour
         buffer = startingText ?? "";
         RefreshPreview();
 
-        if (headTransform != null)
+        if (owner is NoteCreationPanel notePanel && notePanel.gameObject.activeInHierarchy)
+            DockBelow(notePanel.transform);
+        else if (headTransform != null)
         {
             transform.position = headTransform.position + headTransform.forward * spawnDistance + Vector3.down * 0.15f;
             transform.rotation = Quaternion.LookRotation(transform.position - headTransform.position);
         }
         gameObject.SetActive(true);
+    }
+
+    // Opened from the note panel: the keyboard sits just under it, tilted back like the
+    // lower console of a cockpit - panel upright above, keyboard sloping toward the user.
+    const float DockedTilt = 50f;      // degrees the keyboard face is tipped up from vertical
+    const float DockedTopEdgeY = -0.34f; // panel-local, just under the Discard / Create row
+    const float KeyboardHeight = 0.36f;
+
+    void DockBelow(Transform panel)
+    {
+        Quaternion tilt = Quaternion.Euler(DockedTilt, 0f, 0f);
+        Vector3 topEdge = panel.TransformPoint(new Vector3(0f, DockedTopEdgeY, -0.02f));
+        transform.rotation = panel.rotation * tilt;
+        // The top edge stays at the hinge; the rest of the keyboard slopes down toward the user.
+        transform.position = topEdge - transform.up * (KeyboardHeight * 0.5f);
     }
 
     public void TypeChar(string c)

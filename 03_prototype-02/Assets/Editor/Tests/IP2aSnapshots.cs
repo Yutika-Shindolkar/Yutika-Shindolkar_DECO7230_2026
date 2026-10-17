@@ -192,6 +192,32 @@ public class IP2aSnapshots
 
         yield return new ExitPlayMode();
     }
+    // The creation panel upright with the keyboard docked below it, seen from the player's seat.
+    [UnityTest]
+    public IEnumerator KeyboardDockedBelowPanel()
+    {
+        EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+        yield return new EnterPlayMode();
+        yield return null;
+
+        NoteCreationPanel panel = Object.FindFirstObjectByType<NoteCreationPanel>(FindObjectsInactive.Include);
+        Object.FindFirstObjectByType<ClapGestureDetector>().onClap.Invoke();
+        yield return null;
+        panel.EditNoteText();
+        yield return null;
+
+        Camera cam = panel.headTransform.GetComponent<Camera>();
+        Vector3 p = panel.transform.position;
+        cam.transform.position = p - panel.transform.forward * 1.0f + Vector3.up * 0.0f;
+        cam.transform.LookAt(p + Vector3.down * 0.2f);
+        cam.fieldOfView = 70f;
+        Save(cam, "keyboard_docked_front.png");
+        cam.transform.position = p + panel.transform.right * 1.0f - panel.transform.forward * 0.3f;
+        cam.transform.LookAt(p + Vector3.down * 0.2f);
+        Save(cam, "keyboard_docked_side.png");
+
+        yield return new ExitPlayMode();
+    }
     // What the player sees looking straight ahead while holding a note: the trash bin should
     // be visible near the bottom of the view. Uses a headset-like field of view.
     [UnityTest]
