@@ -7,7 +7,9 @@ using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
+using UnityEngine.XR.Interaction.Toolkit;
 using UnityEngine.XR.Interaction.Toolkit.Interactables;
+using UnityEngine.XR.Interaction.Toolkit.Locomotion.Teleportation;
 using UnityEngine.XR.Interaction.Toolkit.UI;
 using TMPro;
 
@@ -108,6 +110,9 @@ public static class IP2aSceneBuilder
 
         // --- Delete (foot-level trash bin) ---
         BuildTrashBin(rig, head);
+
+        // --- Teleport target ---
+        BuildFloorTeleport();
 
         // --- Prompt note ---
         GameObject promptNoteGO = FindOrCreate("PromptNote");
@@ -1078,6 +1083,24 @@ public static class IP2aSceneBuilder
         GameObject prefab = PrefabUtility.SaveAsPrefabAsset(go, path);
         Object.DestroyImmediate(go);
         return prefab;
+    }
+
+    // The floor is the teleport target. The rig's teleport rays only interact with the
+    // "Teleport" interaction layer, so the area sits on that layer alone: other rays (the
+    // grab / UI rays) can't trigger a teleport, and the teleport ray can't grab notes.
+    static void BuildFloorTeleport()
+    {
+        GameObject floor = GameObject.Find("Floor");
+        if (floor == null)
+        {
+            Debug.LogWarning("IP2aSceneBuilder: no Floor found, so there is nothing to teleport onto.");
+            return;
+        }
+        TeleportationArea area = floor.GetComponent<TeleportationArea>();
+        if (area == null) area = floor.AddComponent<TeleportationArea>();
+        area.interactionLayers = InteractionLayerMask.GetMask("Teleport");
+        area.matchOrientation = MatchOrientation.WorldSpaceUp; // keep the player facing where they were
+        area.teleportTrigger = BaseTeleportationInteractable.TeleportTrigger.OnSelectExited; // release the stick to go
     }
 
     // The mic: the boom-arm mic model clamped to the panel's right edge, on the front

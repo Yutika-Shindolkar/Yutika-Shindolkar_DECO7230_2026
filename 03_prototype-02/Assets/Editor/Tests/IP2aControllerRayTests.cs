@@ -278,6 +278,48 @@ public class IP2aControllerRayTests
 
         yield return new ExitPlayMode();
     }
+    // Teleport: aiming the rig's teleport ray at the floor and releasing the teleport select
+    // moves the player there.
+    [UnityTest]
+    public IEnumerator TeleportRayMovesThePlayer()
+    {
+        EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+        yield return new EnterPlayMode();
+        yield return null;
+
+        GameObject floor = GameObject.Find("Floor");
+        Assert.IsNotNull(floor.GetComponent<UnityEngine.XR.Interaction.Toolkit.Locomotion.Teleportation.TeleportationArea>(),
+            "The floor should be a teleport target.");
+
+        GameObject rig = GameObject.Find("XR Origin (XR Rig)");
+        Transform right = rig.transform.Find("Camera Offset/Right Controller");
+        right.gameObject.SetActive(true);
+        foreach (Behaviour beh in right.GetComponents<Behaviour>())
+            if (beh.GetType().Name.Contains("TrackedPoseDriver")) beh.enabled = false;
+        Transform tele = right.Find("Teleport Interactor");
+        Assert.IsNotNull(tele, "The right controller should have a Teleport Interactor.");
+        tele.gameObject.SetActive(true);
+        XRRayInteractor ray = tele.GetComponent<XRRayInteractor>();
+        ray.selectInput.inputSourceMode = UnityEngine.XR.Interaction.Toolkit.Inputs.Readers.XRInputButtonReader.InputSourceMode.ManualValue;
+        ray.selectInput.QueueManualState(false, 0f, false, false);
+
+        right.position = rig.transform.position + new Vector3(0f, 1.2f, 0f);
+        right.rotation = Quaternion.Euler(25f, 0f, 0f) * Quaternion.Euler(0f, 0f, 0f);
+        Vector3 before = rig.transform.position;
+
+        float t0 = Time.realtimeSinceStartup;
+        while (ray.interactablesHovered.Count == 0 && Time.realtimeSinceStartup - t0 < 3f) yield return null;
+        Assert.Greater(ray.interactablesHovered.Count, 0, "The teleport ray should hover the floor.");
+
+        ray.selectInput.QueueManualState(true, 1f, true, false);
+        for (int i = 0; i < 3; i++) yield return null;
+        ray.selectInput.QueueManualState(false, 0f, false, true);
+        t0 = Time.realtimeSinceStartup;
+        while (Vector3.Distance(rig.transform.position, before) < 0.5f && Time.realtimeSinceStartup - t0 < 3f) yield return null;
+        Assert.Greater(Vector3.Distance(rig.transform.position, before), 0.5f, "Releasing the teleport select should move the player.");
+
+        yield return new ExitPlayMode();
+    }
     [UnityTest]
     public IEnumerator RightRayStillHoversWithTourMenuOpenAndCanHoverHandles()
     {
