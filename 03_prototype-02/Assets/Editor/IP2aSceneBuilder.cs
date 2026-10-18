@@ -108,8 +108,9 @@ public static class IP2aSceneBuilder
         for (int i = 0; i < 5; i++)
             notePrefabs[i] = BuildNotePrefab(shapeNames[i], shapeColors[i], (NoteShape)i, handleLayer, linePrefab, labelPrefab);
 
-        // --- Delete (foot-level trash bin) ---
+        // --- Delete and archive (foot-level trash bin and archive tray) ---
         BuildTrashBin(rig, head);
+        BuildArchiveTray(rig, head);
 
         // --- Teleport target ---
         BuildFloorTeleport();
@@ -1367,6 +1368,114 @@ public static class IP2aSceneBuilder
         float binRadius = Mathf.Max(placed.extents.x, placed.extents.z);
         trashBin.dropRadius = binRadius + 0.08f;
         trashBin.dropHeight = placed.size.y + 0.4f;
+    }
+
+    // Archive tray (ArchiveTray.cs / NoteTrashHandler.cs): a flat serving tray built from a
+    // slab and four rim strips, placed on the floor beside the trash bin while a note is held.
+    // A placeholder until there is a model for it. It has the same blue glow outline, shown
+    // while a held note is over it, as the bin has in red.
+    //
+    // Rebuilt on every run (it is only primitives), so there is nothing to keep between runs.
+    const float TrayWidth = 0.5f;     // metres, side to side
+    const float TrayDepth = 0.34f;    // front to back
+    const float TrayBaseThickness = 0.02f;
+    const float TrayRimHeight = 0.04f;  // above the base
+    const float TrayRimThickness = 0.02f;
+    const float TrayOutlineWidth = 0.02f;
+
+    static void BuildArchiveTray(GameObject rig, Transform head)
+    {
+        GameObject tray = FindOrCreate("ArchiveTray");
+        tray.transform.position = rig.transform.position; // starting position only; placed at runtime
+        tray.transform.rotation = Quaternion.identity;
+        foreach (string old in new[] { "TrayModel", "TrayOutline", "TrayLabelHolder" })
+        {
+            Transform stale = tray.transform.Find(old);
+            if (stale != null) Object.DestroyImmediate(stale.gameObject);
+        }
+
+        Material trayMat = GetOrCreateTrayMaterial();
+        Transform model = new GameObject("TrayModel").transform;
+        model.SetParent(tray.transform, false);
+        AddTrayPart(model, "Base", new Vector3(0f, TrayBaseThickness * 0.5f, 0f),
+            new Vector3(TrayWidth, TrayBaseThickness, TrayDepth), trayMat);
+        float rimY = TrayBaseThickness + TrayRimHeight * 0.5f;
+        float halfW = TrayWidth * 0.5f - TrayRimThickness * 0.5f;
+        float halfD = TrayDepth * 0.5f - TrayRimThickness * 0.5f;
+        AddTrayPart(model, "RimFront", new Vector3(0f, rimY, -halfD), new Vector3(TrayWidth, TrayRimHeight, TrayRimThickness), trayMat);
+        AddTrayPart(model, "RimBack", new Vector3(0f, rimY, halfD), new Vector3(TrayWidth, TrayRimHeight, TrayRimThickness), trayMat);
+        AddTrayPart(model, "RimLeft", new Vector3(-halfW, rimY, 0f), new Vector3(TrayRimThickness, TrayRimHeight, TrayDepth - 2f * TrayRimThickness), trayMat);
+        AddTrayPart(model, "RimRight", new Vector3(halfW, rimY, 0f), new Vector3(TrayRimThickness, TrayRimHeight, TrayDepth - 2f * TrayRimThickness), trayMat);
+
+        GameObject outline = new GameObject("TrayOutline");
+        outline.transform.SetParent(tray.transform, false);
+        outline.AddComponent<MeshFilter>().sharedMesh = SaveMeshAsset("ArchiveTrayOutline", BuildSmoothedCopy(tray.transform, model));
+        MeshRenderer outlineMr = outline.AddComponent<MeshRenderer>();
+        string outlineMatPath = $"{MaterialsDir}/ArchiveTrayOutline_Mat.mat";
+        Material outlineMat = AssetDatabase.LoadAssetAtPath<Material>(outlineMatPath);
+        if (outlineMat == null)
+        {
+            outlineMat = new Material(Shader.Find("Custom/SilhouetteOutline"));
+            AssetDatabase.CreateAsset(outlineMat, outlineMatPath);
+        }
+        outlineMat.SetFloat("_Width", TrayOutlineWidth);
+        outlineMr.sharedMaterial = outlineMat;
+        outlineMr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+
+        // Label above the tray, like the bin's. The text sits under a plain holder that
+        // does the positioning.
+        GameObject labelHolder = new GameObject("TrayLabelHolder");
+        labelHolder.transform.SetParent(tray.transform, false);
+        labelHolder.transform.localPosition = new Vector3(0f, TrayBaseThickness + TrayRimHeight + 0.2f, 0f);
+        GameObject labelGO = new GameObject("TrayLabel");
+        labelGO.transform.SetParent(labelHolder.transform, false);
+        TextMeshPro label = labelGO.AddComponent<TextMeshPro>();
+        label.text = "Drop here to archive";
+        label.fontSize = 20f; // about 6 cm letters: readable from 2 m away
+        label.alignment = TextAlignmentOptions.Center;
+        label.color = new Color(0.2f, 0.35f, 0.55f);
+        label.rectTransform.sizeDelta = new Vector2(40f, 8f);
+        labelGO.transform.localScale = Vector3.one * 0.03f;
+
+        ArchiveTray archiveTray = tray.GetComponent<ArchiveTray>();
+        if (archiveTray == null) archiveTray = tray.AddComponent<ArchiveTray>();
+        archiveTray.playerRoot = rig.transform;
+        archiveTray.headTransform = head;
+        archiveTray.footOffsetY = 0f;
+        archiveTray.visual = model.GetComponentInChildren<Renderer>();
+        archiveTray.outline = outlineMr;
+        archiveTray.glowDim = new Color(0.15f, 0.45f, 0.9f);
+        archiveTray.glowBright = new Color(0.45f, 0.75f, 1f);
+        archiveTray.sideOffset = 0.8f;
+        archiveTray.dropRadius = Mathf.Max(TrayWidth, TrayDepth) * 0.5f + 0.08f;
+        archiveTray.dropHeight = TrayBaseThickness + TrayRimHeight + 0.4f;
+    }
+
+    static void AddTrayPart(Transform parent, string name, Vector3 localPos, Vector3 size, Material mat)
+    {
+        GameObject part = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        part.name = name;
+        part.transform.SetParent(parent, false);
+        part.transform.localPosition = localPos;
+        part.transform.localScale = size;
+        Object.DestroyImmediate(part.GetComponent<Collider>()); // not something to grab or aim at
+        part.GetComponent<MeshRenderer>().sharedMaterial = mat;
+    }
+
+    // URP Lit, a soft brushed-metal serving tray.
+    static Material GetOrCreateTrayMaterial()
+    {
+        string path = $"{MaterialsDir}/ArchiveTray_Mat.mat";
+        Material mat = AssetDatabase.LoadAssetAtPath<Material>(path);
+        if (mat == null)
+        {
+            mat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+            mat.SetColor("_BaseColor", new Color(0.78f, 0.78f, 0.8f));
+            mat.SetFloat("_Metallic", 0.6f);
+            mat.SetFloat("_Smoothness", 0.5f);
+            AssetDatabase.CreateAsset(mat, path);
+        }
+        return mat;
     }
 
     // URP Lit with the trash can's texture, so it's shaded like a real object in the room.

@@ -232,6 +232,63 @@ public class IP2aWhiteboardTests
         yield return new ExitPlayMode();
     }
 
+    // The archive tray beside the bin: a held note over it lights it up, and letting go there
+    // hides the note and keeps it in the archive, with its connections removed.
+    [UnityTest]
+    public IEnumerator TrayArchivesNoteAndItsConnections()
+    {
+        EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+        yield return new EnterPlayMode();
+        yield return null;
+        Setup();
+
+        NoteData a = SpawnNote(Vector3.zero);
+        NoteData b = SpawnNote(panel.headTransform.right * 0.6f);
+        Physics.SyncTransforms();
+        Connect(a, b);
+
+        FootTrashBin bin = FootTrashBin.Instance;
+        ArchiveTray tray = ArchiveTray.Instance;
+        Assert.IsNotNull(tray, "No archive tray.");
+        Assert.IsFalse(tray.visual.enabled, "Tray should be hidden until a note is held.");
+        XRGrabInteractable grabA = a.GetComponent<XRGrabInteractable>();
+        manager.SelectEnter((IXRSelectInteractor)hand, (IXRSelectInteractable)grabA);
+
+        // Beside the bin, to the player's right, on the floor.
+        float floorY = GameObject.Find("XR Origin (XR Rig)").transform.position.y;
+        Assert.IsTrue(tray.visual.enabled, "Tray should show while a note is held.");
+        Assert.AreEqual(floorY, tray.transform.position.y, 0.01f, "Tray should sit on the floor.");
+        Vector3 side = tray.transform.position - bin.transform.position;
+        Assert.AreEqual(tray.sideOffset, side.magnitude, 0.01f, "Tray should sit beside the bin.");
+        Assert.Greater(Vector3.Dot(side.normalized, bin.transform.right), 0.99f, "Tray should be to the bin's right.");
+        Assert.Greater(Vector3.Distance(tray.transform.position, bin.transform.position), bin.dropRadius + tray.dropRadius,
+            "The two drop zones shouldn't overlap.");
+
+        // Blue outline: hidden until a held note is over the tray.
+        yield return null;
+        Assert.IsFalse(tray.outline.enabled, "Outline should stay hidden while the note isn't over the tray.");
+        // The held note snaps to the hand, so carry the hand (and the note with it) over the tray.
+        hand.transform.position = tray.transform.position + Vector3.up * 0.2f;
+        yield return null;
+        yield return null;
+        Assert.IsTrue(tray.outline.enabled, "Outline should show while a note is over the tray.");
+        Assert.IsFalse(bin.outline.enabled, "The bin shouldn't light up over the tray.");
+
+        // Let go over the tray: the note is kept, hidden, and disconnected.
+        manager.SelectExit((IXRSelectInteractor)hand, (IXRSelectInteractable)grabA);
+        yield return null;
+        yield return null;
+        Assert.IsTrue(a != null, "An archived note isn't deleted.");
+        Assert.IsFalse(a.gameObject.activeInHierarchy, "An archived note should leave the space.");
+        CollectionAssert.Contains(NoteArchive.Notes, a, "The note should be in the archive.");
+        Assert.AreEqual(0, Object.FindObjectsByType<ConnectionLine>(FindObjectsSortMode.None).Length,
+            "Its connection line and label should be removed.");
+        Assert.IsFalse(TourManager.tourPath.Contains(a.transform), "An archived note should leave the Tour list.");
+        Assert.IsFalse(tray.visual.enabled, "Tray should hide again.");
+
+        yield return new ExitPlayMode();
+    }
+
     [UnityTest]
     public IEnumerator TourJumpsInFrontOfNoteAndExitReturns()
     {

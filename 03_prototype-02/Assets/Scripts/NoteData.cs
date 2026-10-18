@@ -167,14 +167,23 @@ public class NoteData : MonoBehaviour
         return preferred.y <= area.y && preferred.x <= area.x + 0.01f;
     }
 
-    // When a note is deleted (e.g. dropped in the trash bin), take its connection lines
-    // (and their labels, which are children of the line) with it, and drop it from Tour
-    // Mode's list. Skipped while the scene itself is unloading.
+    // When a note is deleted (e.g. dropped in the trash bin), it takes its connection lines
+    // with it. Skipped while the scene itself is unloading.
     void OnDestroy()
     {
-        TourManager.tourPath.Remove(transform);
-        if (!gameObject.scene.isLoaded) return;
+        if (!gameObject.scene.isLoaded)
+        {
+            TourManager.tourPath.Remove(transform);
+            return;
+        }
+        RemoveConnections();
+    }
 
+    // Takes this note's connection lines (and their labels, which are children of the line)
+    // away, and drops the note from Tour Mode's list. Used when the note is deleted or archived.
+    public void RemoveConnections()
+    {
+        TourManager.tourPath.Remove(transform);
         foreach (ConnectionLine line in FindObjectsByType<ConnectionLine>(FindObjectsSortMode.None))
         {
             bool attached = (line.pointA != null && line.pointA.IsChildOf(transform))

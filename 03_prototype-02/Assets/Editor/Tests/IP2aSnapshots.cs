@@ -236,13 +236,16 @@ public class IP2aSnapshots
         cam.fieldOfView = 90f;
 
         FootTrashBin.Instance.RegisterHoldStart();
+        ArchiveTray.Instance.RegisterHoldStart();
         yield return null;
         Save(cam, "trash_bin_in_view.png");
 
         // Same view with a note over the bin: the red outline shows.
+        ArchiveTray.Instance.ShowReady();
         FootTrashBin.Instance.ShowReady();
         yield return null;
         Save(cam, "trash_bin_ready.png");
+        Save(cam, "archive_tray_ready.png");
 
         // Closer, from above: the outline traces the can's silhouette without filling in
         // its see-through mesh.
@@ -253,6 +256,7 @@ public class IP2aSnapshots
         yield return null;
         Save(cam, "trash_bin_ready_close.png");
         FootTrashBin.Instance.RegisterHoldEnd();
+        ArchiveTray.Instance.RegisterHoldEnd();
 
         yield return new ExitPlayMode();
     }
