@@ -289,6 +289,47 @@ public class IP2aWhiteboardTests
         yield return new ExitPlayMode();
     }
 
+    // Restoring archived notes: each comes back 1.2 m ahead at eye height facing the player,
+    // without its connections, and a second note restored in a row is nudged sideways.
+    [UnityTest]
+    public IEnumerator RestoredNotesReturnInFrontAndDoNotOverlap()
+    {
+        EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+        yield return new EnterPlayMode();
+        yield return null;
+        Setup();
+
+        NoteData a = SpawnNote(Vector3.zero);
+        NoteData b = SpawnNote(panel.headTransform.right * 0.6f);
+        Physics.SyncTransforms();
+        Connect(a, b);
+        NoteArchive.Add(a);
+        NoteArchive.Add(b);
+        yield return null; // the lines are destroyed at the end of the frame
+        Assert.AreEqual(0, Object.FindObjectsByType<ConnectionLine>(FindObjectsSortMode.None).Length);
+
+        Transform head = panel.headTransform;
+        NoteArchive.Restore(a, head);
+        Assert.IsTrue(a.gameObject.activeInHierarchy, "A restored note should be back in the space.");
+        Assert.IsNull(a.transform.parent, "A restored note should not stay under the archive holder.");
+        CollectionAssert.DoesNotContain(NoteArchive.Notes, a);
+        Vector3 toNote = a.transform.position - head.position;
+        Assert.AreEqual(head.position.y, a.transform.position.y, 0.001f, "Restored at eye height.");
+        toNote.y = 0f;
+        Assert.AreEqual(NoteArchive.RestoreDistance, toNote.magnitude, 0.01f, "Restored 1.2 m ahead.");
+        Assert.Greater(Vector3.Dot(toNote.normalized, a.transform.forward), 0.99f, "Turned to face the player.");
+        Assert.AreEqual(0, Object.FindObjectsByType<ConnectionLine>(FindObjectsSortMode.None).Length,
+            "Connections are not brought back.");
+
+        NoteArchive.Restore(b, head);
+        Vector3 apart = b.transform.position - a.transform.position;
+        Assert.AreEqual(0f, apart.y, 0.001f);
+        Assert.Greater(apart.magnitude, 0.2f, "The second restored note should be nudged clear of the first.");
+        Assert.AreEqual(0, NoteArchive.Notes.Count, "Both notes should have left the archive.");
+
+        yield return new ExitPlayMode();
+    }
+
     [UnityTest]
     public IEnumerator TourJumpsInFrontOfNoteAndExitReturns()
     {
