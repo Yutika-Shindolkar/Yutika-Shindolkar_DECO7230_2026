@@ -264,6 +264,14 @@ public class IP2aSnapshots
         FootTrashBin.Instance.ShowReady();
         yield return null;
         Save(cam, "trash_bin_ready_close.png");
+
+        // The tray from the same kind of angle, to check the model sits the right way up.
+        Transform tray = ArchiveTray.Instance.transform;
+        cam.transform.position = tray.position + Vector3.up * 0.9f - tray.forward * 0.7f;
+        cam.transform.LookAt(tray.position + Vector3.up * 0.05f);
+        ArchiveTray.Instance.ShowReady();
+        yield return null;
+        Save(cam, "archive_tray_close.png");
         FootTrashBin.Instance.RegisterHoldEnd();
         ArchiveTray.Instance.RegisterHoldEnd();
 

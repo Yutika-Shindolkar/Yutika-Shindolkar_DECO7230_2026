@@ -1431,18 +1431,24 @@ public static class IP2aSceneBuilder
             if (stale != null) Object.DestroyImmediate(stale.gameObject);
         }
 
-        Material trayMat = GetOrCreateTrayMaterial();
         Transform model = new GameObject("TrayModel").transform;
         model.SetParent(tray.transform, false);
-        AddTrayPart(model, "Base", new Vector3(0f, TrayBaseThickness * 0.5f, 0f),
-            new Vector3(TrayWidth, TrayBaseThickness, TrayDepth), trayMat);
-        float rimY = TrayBaseThickness + TrayRimHeight * 0.5f;
-        float halfW = TrayWidth * 0.5f - TrayRimThickness * 0.5f;
-        float halfD = TrayDepth * 0.5f - TrayRimThickness * 0.5f;
-        AddTrayPart(model, "RimFront", new Vector3(0f, rimY, -halfD), new Vector3(TrayWidth, TrayRimHeight, TrayRimThickness), trayMat);
-        AddTrayPart(model, "RimBack", new Vector3(0f, rimY, halfD), new Vector3(TrayWidth, TrayRimHeight, TrayRimThickness), trayMat);
-        AddTrayPart(model, "RimLeft", new Vector3(-halfW, rimY, 0f), new Vector3(TrayRimThickness, TrayRimHeight, TrayDepth - 2f * TrayRimThickness), trayMat);
-        AddTrayPart(model, "RimRight", new Vector3(halfW, rimY, 0f), new Vector3(TrayRimThickness, TrayRimHeight, TrayDepth - 2f * TrayRimThickness), trayMat);
+        Bounds placed;
+        if (!TryPlaceTrayModel(tray.transform, model, out placed))
+        {
+            // No model available: fall back to the primitive tray.
+            Material trayMat = GetOrCreateTrayMaterial();
+            AddTrayPart(model, "Base", new Vector3(0f, TrayBaseThickness * 0.5f, 0f),
+                new Vector3(TrayWidth, TrayBaseThickness, TrayDepth), trayMat);
+            float rimY = TrayBaseThickness + TrayRimHeight * 0.5f;
+            float halfW = TrayWidth * 0.5f - TrayRimThickness * 0.5f;
+            float halfD = TrayDepth * 0.5f - TrayRimThickness * 0.5f;
+            AddTrayPart(model, "RimFront", new Vector3(0f, rimY, -halfD), new Vector3(TrayWidth, TrayRimHeight, TrayRimThickness), trayMat);
+            AddTrayPart(model, "RimBack", new Vector3(0f, rimY, halfD), new Vector3(TrayWidth, TrayRimHeight, TrayRimThickness), trayMat);
+            AddTrayPart(model, "RimLeft", new Vector3(-halfW, rimY, 0f), new Vector3(TrayRimThickness, TrayRimHeight, TrayDepth - 2f * TrayRimThickness), trayMat);
+            AddTrayPart(model, "RimRight", new Vector3(halfW, rimY, 0f), new Vector3(TrayRimThickness, TrayRimHeight, TrayDepth - 2f * TrayRimThickness), trayMat);
+            placed = LocalRendererBounds(tray.transform, model);
+        }
 
         GameObject outline = new GameObject("TrayOutline");
         outline.transform.SetParent(tray.transform, false);
@@ -1463,7 +1469,7 @@ public static class IP2aSceneBuilder
         // does the positioning.
         GameObject labelHolder = new GameObject("TrayLabelHolder");
         labelHolder.transform.SetParent(tray.transform, false);
-        labelHolder.transform.localPosition = new Vector3(0f, TrayBaseThickness + TrayRimHeight + 0.2f, 0f);
+        labelHolder.transform.localPosition = new Vector3(0f, placed.max.y + 0.2f, 0f);
         GameObject labelGO = new GameObject("TrayLabel");
         labelGO.transform.SetParent(labelHolder.transform, false);
         TextMeshPro label = labelGO.AddComponent<TextMeshPro>();
@@ -1484,8 +1490,52 @@ public static class IP2aSceneBuilder
         archiveTray.glowDim = new Color(0.15f, 0.45f, 0.9f);
         archiveTray.glowBright = new Color(0.45f, 0.75f, 1f);
         archiveTray.sideOffset = 0.8f;
-        archiveTray.dropRadius = Mathf.Max(TrayWidth, TrayDepth) * 0.5f + 0.08f;
-        archiveTray.dropHeight = TrayBaseThickness + TrayRimHeight + 0.4f;
+        archiveTray.dropRadius = Mathf.Max(placed.extents.x, placed.extents.z) + 0.08f;
+        archiveTray.dropHeight = placed.size.y + 0.4f;
+    }
+
+    // The tray from the wooden furniture pack: instantiates the pack, keeps only the tray
+    // node, scales it so its longer side is TrayWidth and rests its base on the origin.
+    const string TrayModelPath = "Assets/Models/Wooden Furniture/wooden_furniture_pack.glb";
+    const string TrayNodeName = "Bandeija_madeira_0";
+    static readonly Vector3 TrayUpright = new Vector3(-90f, 0f, 0f);
+
+    static bool TryPlaceTrayModel(Transform tray, Transform model, out Bounds placed)
+    {
+        placed = new Bounds();
+        GameObject source = AssetDatabase.LoadAssetAtPath<GameObject>(TrayModelPath);
+        if (source == null)
+        {
+            Debug.LogWarning($"IP2aSceneBuilder: tray model not found at {TrayModelPath}, using the primitive tray.");
+            return false;
+        }
+        GameObject instance = (GameObject)PrefabUtility.InstantiatePrefab(source, model);
+        instance.name = "TrayPack";
+        // Drop every other item in the pack, keeping the tray and the nodes above it.
+        Transform trayNode = null;
+        foreach (Transform t in instance.GetComponentsInChildren<Transform>(true))
+            if (t.name == TrayNodeName) { trayNode = t; break; }
+        if (trayNode == null)
+        {
+            Debug.LogWarning($"IP2aSceneBuilder: '{TrayNodeName}' not found in the pack, using the primitive tray.");
+            Object.DestroyImmediate(instance);
+            return false;
+        }
+        foreach (Renderer r in instance.GetComponentsInChildren<Renderer>(true))
+            if (!r.transform.IsChildOf(trayNode)) Object.DestroyImmediate(r.gameObject);
+        foreach (Collider c in instance.GetComponentsInChildren<Collider>(true)) Object.DestroyImmediate(c); // not something to grab or aim at
+
+        instance.transform.localPosition = Vector3.zero;
+        // The pack comes in Z-up (the tray's thin axis along Z), so lay it flat first.
+        instance.transform.localRotation = Quaternion.Euler(TrayUpright);
+        instance.transform.localScale = Vector3.one;
+        Bounds raw = LocalRendererBounds(tray, model);
+        instance.transform.localScale = Vector3.one * (TrayWidth / Mathf.Max(raw.size.x, raw.size.z));
+        Bounds scaled = LocalRendererBounds(tray, model);
+        instance.transform.localPosition = new Vector3(-scaled.center.x, -scaled.min.y, -scaled.center.z);
+        placed = LocalRendererBounds(tray, model);
+        Debug.Log($"IP2aSceneBuilder: tray model raw size {raw.size}, placed size {placed.size}.");
+        return true;
     }
 
     static void AddTrayPart(Transform parent, string name, Vector3 localPos, Vector3 size, Material mat)
