@@ -84,7 +84,7 @@ public static class NoteArchive
     }
 
     // Half the note's width and height in metres (the grab box, at the note's scale).
-    static Vector2 HalfSize(NoteData n)
+    public static Vector2 HalfSize(NoteData n)
     {
         if (n.noteCollider == null) return new Vector2(0.15f, 0.15f);
         Vector3 s = n.noteCollider.transform.lossyScale;

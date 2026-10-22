@@ -363,6 +363,86 @@ public class IP2aWhiteboardTests
         Assert.IsTrue(d.Step(0.3f, true, false));
     }
 
+    // The archive window: the pull gesture opens it ahead of the player with a grid of the
+    // archived notes, dragging empty space scrolls it, and the same pull closes it.
+    [UnityTest]
+    public IEnumerator ArchiveWindowShowsNotesScrollsAndCloses()
+    {
+        EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+        yield return new EnterPlayMode();
+        yield return null;
+        Setup();
+
+        ArchiveWindow window = Object.FindFirstObjectByType<ArchiveWindow>(FindObjectsInactive.Include);
+        Assert.IsNotNull(window, "No archive window in the scene.");
+        Assert.IsFalse(window.IsOpen, "The window starts closed.");
+
+        // Opens empty.
+        ArchiveDrawerGesture.RaisePulled(null);
+        Assert.IsTrue(window.IsOpen);
+        Assert.AreEqual(0, window.ItemCount);
+        Assert.IsTrue(window.emptyLabel.activeSelf, "An empty archive says so.");
+        Vector3 toWindow = window.transform.position - panel.headTransform.position;
+        Assert.AreEqual(window.distance, new Vector2(toWindow.x, toWindow.z).magnitude, 0.01f, "Opens ahead of the player.");
+        Assert.Greater(Vector3.Dot(new Vector3(toWindow.x, 0f, toWindow.z).normalized, window.transform.forward), 0.99f, "Faces the player.");
+        ArchiveDrawerGesture.RaisePulled(null);
+        Assert.IsFalse(window.IsOpen, "The same pull closes it.");
+
+        // 14 archived notes: 4 rows of 4, 3 rows show at a time.
+        for (int i = 0; i < 14; i++)
+        {
+            NoteData n = SpawnNote(Vector3.zero);
+            n.SetLabel("note " + i);
+            NoteArchive.Add(n);
+        }
+        yield return null;
+        ArchiveDrawerGesture.RaisePulled(null);
+        yield return null;
+        Assert.AreEqual(14, window.ItemCount);
+        Assert.AreEqual(12, window.VisibleItemCount, "Three rows of four show at first.");
+        Assert.AreEqual("Archive (14)", window.header.text);
+        Assert.IsFalse(window.emptyLabel.activeSelf);
+        Assert.AreEqual(14, NoteArchive.Notes.Count, "The real notes stay in the archive.");
+        foreach (Collider c in window.content.GetComponentsInChildren<Collider>(true))
+            Assert.Fail("A display copy shouldn't have a collider.");
+        Assert.AreEqual(0, window.content.GetComponentsInChildren<XRGrabInteractable>(true).Length, "A display copy can't be grabbed.");
+
+        // Grab empty space and drag up one row: the grid moves up and the last row shows.
+        XRSimpleInteractable surface = window.scrollSurface;
+        Vector3 grabAt = window.card.transform.TransformPoint(new Vector3(0.38f, 0f, -0.02f));
+        hand.transform.position = grabAt;
+        manager.SelectEnter((IXRSelectInteractor)hand, (IXRSelectInteractable)surface);
+        hand.transform.position = grabAt + window.card.transform.up * window.cellPitch;
+        yield return null;
+        Assert.AreEqual(window.cellPitch, window.Scroll, 0.005f, "Dragging up one row scrolls one row.");
+        manager.SelectExit((IXRSelectInteractor)hand, (IXRSelectInteractable)surface);
+        float waited = 0f;
+        while (waited < 1f) { waited += Time.unscaledDeltaTime; yield return null; }
+        Assert.AreEqual(window.cellPitch, window.Scroll, 0.005f, "Settles on a whole row.");
+        Assert.AreEqual(10, window.VisibleItemCount, "Rows 2 to 4 show: 4 + 4 + 2 notes.");
+
+        // Dragging past the end stays at the last row.
+        hand.transform.position = grabAt;
+        manager.SelectEnter((IXRSelectInteractor)hand, (IXRSelectInteractable)surface);
+        hand.transform.position = grabAt + window.card.transform.up * 1f;
+        yield return null;
+        Assert.AreEqual(window.cellPitch, window.Scroll, 0.005f, "Can't scroll past the last row.");
+        manager.SelectExit((IXRSelectInteractor)hand, (IXRSelectInteractable)surface);
+
+        // A restored note leaves the window.
+        NoteArchive.Restore(NoteArchive.Notes[0], panel.headTransform);
+        yield return null;
+        Assert.AreEqual(13, window.ItemCount);
+        Assert.AreEqual("Archive (13)", window.header.text);
+
+        ArchiveDrawerGesture.RaisePulled(null);
+        yield return null;
+        Assert.IsFalse(window.IsOpen);
+        Assert.AreEqual(0, window.content.childCount, "Closing clears the display copies.");
+
+        yield return new ExitPlayMode();
+    }
+
     [UnityTest]
     public IEnumerator ArchiveGestureIsPlacedInTheScene()
     {

@@ -277,6 +277,40 @@ public class IP2aSnapshots
 
         yield return new ExitPlayMode();
     }
+    // The archive window with a mix of archived notes: text of different lengths and a picture.
+    [UnityTest]
+    public IEnumerator ArchiveWindow()
+    {
+        EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+        yield return new EnterPlayMode();
+        yield return null;
+
+        NoteCreationPanel panel = Object.FindFirstObjectByType<NoteCreationPanel>(FindObjectsInactive.Include);
+        Object.FindFirstObjectByType<PromptNote>()?.Hide();
+        Camera cam = panel.headTransform.GetComponent<Camera>();
+        cam.fieldOfView = 70f;
+
+        string[] labels = { "hi", "Remember to email the client", "Budget review", "Ideas for the launch week",
+            "Site visit: the north hills from the lookout", "Call back", "Prototype 3 feedback and next steps for the team", "Q&A" };
+        for (int i = 0; i < labels.Length; i++)
+        {
+            panel.CreateTestNote();
+            NoteData[] all = Object.FindObjectsByType<NoteData>(FindObjectsSortMode.None);
+            NoteData note = null;
+            foreach (NoteData n in all) if (!NoteArchive.Notes.Contains(n)) note = n;
+            note.SetLabel(labels[i]);
+            if (i == 4) note.SetMedia(MediaType.Image, panel.imagePlaceholder);
+            NoteArchive.Add(note);
+            yield return null;
+        }
+
+        ArchiveDrawerGesture.RaisePulled(null);
+        yield return null;
+        yield return null;
+        Save(cam, "archive_window.png");
+        yield return new ExitPlayMode();
+    }
+
     static void Save(Camera cam, string fileName)
     {
         const int width = 1280, height = 960;

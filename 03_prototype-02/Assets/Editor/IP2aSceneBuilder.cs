@@ -120,6 +120,8 @@ public static class IP2aSceneBuilder
         drawer.leftHand = leftHand;
         drawer.rightHand = rightHand;
 
+        BuildArchiveWindow(head);
+
         // --- Teleport target ---
         BuildFloorTeleport();
 
@@ -1544,6 +1546,76 @@ public static class IP2aSceneBuilder
         placed = LocalRendererBounds(tray, model);
         Debug.Log($"IP2aSceneBuilder: tray model raw size {raw.size}, placed size {placed.size}.");
         return true;
+    }
+
+    // The archive window (ArchiveWindow.cs): a plain white card, styled like the creation
+    // panel, that opens in front of the player and shows the archived notes in a grid. The
+    // root stays switched on so it can hear the drawer-pull gesture; only the Card is shown
+    // and hidden. Grabbing the card (empty space between notes) scrolls it.
+    const float ArchiveWindowWidth = 0.86f;
+    const float ArchiveWindowHeight = 0.76f;
+
+    static TextMeshPro BuildArchiveWindowText(Transform card, string holderName, string textName, string text, float size, Color color, float y)
+    {
+        GameObject holder = FindOrCreateChild(card, holderName);
+        holder.transform.localPosition = new Vector3(0f, y, -0.02f);
+        holder.transform.localRotation = Quaternion.identity;
+        GameObject go = FindOrCreateChild(holder.transform, textName);
+        TextMeshPro tmp = go.GetComponent<TextMeshPro>();
+        if (tmp == null) tmp = go.AddComponent<TextMeshPro>();
+        tmp.text = text;
+        tmp.fontSize = size;
+        tmp.alignment = TextAlignmentOptions.Center;
+        tmp.color = color;
+        go.transform.localPosition = Vector3.zero;
+        go.transform.localScale = Vector3.one * 0.03f;
+        return tmp;
+    }
+
+    static void BuildArchiveWindow(Transform head)
+    {
+        GameObject root = FindOrCreate("ArchiveWindow");
+        ArchiveWindow window = root.GetComponent<ArchiveWindow>();
+        if (window == null) window = root.AddComponent<ArchiveWindow>();
+
+        GameObject card = FindOrCreateChild(root.transform, "Card");
+        SetupRoundedRect(card, ArchiveWindowWidth, ArchiveWindowHeight, 0.035f, 0.015f, Color.white, "ArchiveWindowCard");
+        card.transform.localPosition = Vector3.zero;
+        card.transform.localRotation = Quaternion.identity;
+        XRSimpleInteractable surface = card.GetComponent<XRSimpleInteractable>();
+        if (surface == null) surface = card.AddComponent<XRSimpleInteractable>();
+        if (card.GetComponent<ArchiveScrollSurface>() == null) card.AddComponent<ArchiveScrollSurface>();
+
+        float border = 0.006f;
+        GameObject outline = FindOrCreateChild(card.transform, "CardOutline");
+        SetupRoundedRect(outline, ArchiveWindowWidth + border * 2f, ArchiveWindowHeight + border * 2f, 0.035f + border, 0.01f,
+            new Color(169f / 255f, 169f / 255f, 169f / 255f), "ArchiveWindowOutline");
+        outline.transform.localPosition = new Vector3(0f, 0f, 0.01f);
+        RemoveCollider(outline);
+
+        // The text sits under a plain holder that does the positioning (a TextMeshPro's own
+        // RectTransform position didn't persist when set from here).
+        foreach (string stale in new[] { "Header", "EmptyLabel" })
+        {
+            Transform old = card.transform.Find(stale);
+            if (old != null) Object.DestroyImmediate(old.gameObject);
+        }
+        TextMeshPro headerText = BuildArchiveWindowText(card.transform, "HeaderHolder", "Header", "Archive (0)", 10f, Color.black, 0.32f);
+        TextMeshPro emptyText = BuildArchiveWindowText(card.transform, "EmptyHolder", "EmptyLabel", "Nothing archived yet", 8f, new Color(0.45f, 0.45f, 0.45f), -0.05f);
+        GameObject emptyGO = emptyText.transform.parent.gameObject;
+
+        GameObject content = FindOrCreateChild(card.transform, "Content");
+        content.transform.localPosition = Vector3.zero;
+        content.transform.localRotation = Quaternion.identity;
+        content.transform.localScale = Vector3.one;
+
+        window.headTransform = head;
+        window.card = card;
+        window.content = content.transform;
+        window.header = headerText;
+        window.emptyLabel = emptyGO;
+        window.scrollSurface = surface;
+        card.SetActive(false); // shown by the gesture
     }
 
     static void AddTrayPart(Transform parent, string name, Vector3 localPos, Vector3 size, Material mat)

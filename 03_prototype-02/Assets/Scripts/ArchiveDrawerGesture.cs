@@ -1,6 +1,7 @@
 using System;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.XR.Interaction.Toolkit.Interactables;
 using UnityEngine.XR.Interaction.Toolkit.Interactors;
 
 // Decides whether a hand has made the "pull a drawer" gesture: the hand is held out in front
@@ -121,7 +122,7 @@ public class ArchiveDrawerGesture : MonoBehaviour
         if (!fired) return;
 
         Haptic(h.transform, doneAmplitude, doneDuration);
-        Pulled?.Invoke(h.transform);
+        RaisePulled(h.transform);
     }
 
     // How far ahead of the head (along where it faces, level) the hand is.
@@ -133,13 +134,25 @@ public class ArchiveDrawerGesture : MonoBehaviour
         return Vector3.Dot(hand.position - headTransform.position, forward.normalized);
     }
 
-    // The grip belongs to something else while the hand is holding or pointing at it.
+    // The grip belongs to something else while the hand is holding or pointing at it. The
+    // archive window doesn't count, so the same pull can close it while pointing at it.
     static bool IsBusy(Transform hand)
     {
         foreach (XRBaseInteractor interactor in hand.GetComponentsInChildren<XRBaseInteractor>())
-            if (interactor.hasSelection || interactor.hasHover) return true;
+        {
+            foreach (IXRHoverInteractable hovered in interactor.interactablesHovered)
+                if (!IsArchiveWindow(hovered)) return true;
+            foreach (IXRSelectInteractable selected in interactor.interactablesSelected)
+                if (!IsArchiveWindow(selected)) return true;
+        }
         return false;
     }
+
+    static bool IsArchiveWindow(IXRInteractable interactable) =>
+        interactable is Component c && c.GetComponent<ArchiveScrollSurface>() != null;
+
+    // Raises Pulled without a controller, for tests.
+    public static void RaisePulled(Transform hand) => Pulled?.Invoke(hand);
 
     static void Haptic(Transform hand, float amplitude, float duration)
     {
