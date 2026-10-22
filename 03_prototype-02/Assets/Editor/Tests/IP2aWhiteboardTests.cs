@@ -330,6 +330,55 @@ public class IP2aWhiteboardTests
         yield return new ExitPlayMode();
     }
 
+    // The drawer-pull gesture: grip pressed with the hand out in front, then pulled back.
+    [Test]
+    public void DrawerPullNeedsAHandHeldOutThenPulledBack()
+    {
+        // Out, then back 30 cm: opens, once.
+        var d = new DrawerPullDetector();
+        Assert.IsFalse(d.Step(0.5f, true, false));
+        Assert.IsFalse(d.Step(0.4f, true, false), "10 cm back is not enough.");
+        Assert.IsTrue(d.Step(0.2f, true, false), "30 cm back should open it.");
+        Assert.IsFalse(d.Step(0.1f, true, false), "It fires once per grip press.");
+        d.Step(0.1f, false, false);
+        Assert.IsFalse(d.Step(0.5f, true, false), "A new press starts again.");
+        Assert.IsTrue(d.Step(0.2f, true, false));
+
+        // The hand starts too close to the body: not a drawer pull.
+        d = new DrawerPullDetector();
+        Assert.IsFalse(d.Step(0.2f, true, false));
+        Assert.IsFalse(d.Step(0f, true, false));
+
+        // Grip is busy holding or pointing at something: it doesn't count, even once freed
+        // mid-press, until the grip is let go and pressed again.
+        d = new DrawerPullDetector();
+        Assert.IsFalse(d.Step(0.5f, true, true));
+        Assert.IsFalse(d.Step(0.1f, true, false));
+
+        // Pushing out further first still needs the full pull back from the furthest point.
+        d = new DrawerPullDetector();
+        d.Step(0.4f, true, false);
+        Assert.IsFalse(d.Step(0.6f, true, false));
+        Assert.IsFalse(d.Step(0.4f, true, false), "Only 20 cm back from 0.6.");
+        Assert.IsTrue(d.Step(0.3f, true, false));
+    }
+
+    [UnityTest]
+    public IEnumerator ArchiveGestureIsPlacedInTheScene()
+    {
+        EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+        yield return new EnterPlayMode();
+        yield return null;
+
+        ArchiveDrawerGesture gesture = Object.FindFirstObjectByType<ArchiveDrawerGesture>();
+        Assert.IsNotNull(gesture, "No archive drawer gesture in the scene.");
+        Assert.IsNotNull(gesture.headTransform);
+        Assert.IsNotNull(gesture.leftHand);
+        Assert.IsNotNull(gesture.rightHand);
+
+        yield return new ExitPlayMode();
+    }
+
     [UnityTest]
     public IEnumerator TourJumpsInFrontOfNoteAndExitReturns()
     {

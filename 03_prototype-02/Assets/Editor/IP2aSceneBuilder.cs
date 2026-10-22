@@ -112,6 +112,14 @@ public static class IP2aSceneBuilder
         BuildTrashBin(rig, head);
         BuildArchiveTray(rig, head);
 
+        // --- Pull-a-drawer gesture that opens and closes the archive window ---
+        GameObject drawerGO = FindOrCreate("ArchiveDrawerGesture");
+        ArchiveDrawerGesture drawer = drawerGO.GetComponent<ArchiveDrawerGesture>();
+        if (drawer == null) drawer = drawerGO.AddComponent<ArchiveDrawerGesture>();
+        drawer.headTransform = head;
+        drawer.leftHand = leftHand;
+        drawer.rightHand = rightHand;
+
         // --- Teleport target ---
         BuildFloorTeleport();
 
