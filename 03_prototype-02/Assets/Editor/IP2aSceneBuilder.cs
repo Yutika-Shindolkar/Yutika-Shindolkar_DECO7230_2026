@@ -1188,16 +1188,24 @@ public static class IP2aSceneBuilder
         armHandle.transform.localRotation = Quaternion.LookRotation(armTop.normalized);
         CapsuleCollider armCol = armHandle.AddComponent<CapsuleCollider>();
         armCol.direction = 2;
-        armCol.radius = 0.03f * perMetre;
+        armCol.radius = 0.045f * perMetre;
         armCol.height = armTop.magnitude + armCol.radius * 2f;
 
         Bounds headBounds = LocalRendererBounds(head, head);
         GameObject headHandle = NewMicHandle(head, "HeadHandle", headBounds.center);
         SphereCollider headCol = headHandle.AddComponent<SphereCollider>();
-        headCol.radius = 0.045f * perMetre;
+        headCol.radius = 0.07f * perMetre;
+
+        // Glow outlines, one per joint, hugging its parts. They are built last so they are not
+        // part of what the other outline copies.
+        Material micOutlineMat = GetOrCreateMicOutlineMaterial();
+        Renderer elbowOutline = AddMicOutline(elbow, uprightBar, "ElbowOutline", micOutlineMat);
+        Renderer headOutline = AddMicOutline(head, head, "HeadOutline", micOutlineMat);
 
         MicBoomArm boom = mic.AddComponent<MicBoomArm>();
         boom.elbow.pivot = elbow;
+        boom.elbow.outline = elbowOutline;
+        boom.head.outline = headOutline;
         boom.elbow.handle = armHandle.AddComponent<XRSimpleInteractable>();
         boom.elbow.maxSwing = 35f;
         boom.head.pivot = head;
@@ -1213,6 +1221,35 @@ public static class IP2aSceneBuilder
         pos.z += -clamp.center.z;
         mic.transform.localPosition = pos;
         return mic.transform;
+    }
+
+    const float MicOutlineWidth = 0.006f; // metres
+
+    static Material GetOrCreateMicOutlineMaterial()
+    {
+        string path = $"{MaterialsDir}/MicOutline_Mat.mat";
+        Material mat = AssetDatabase.LoadAssetAtPath<Material>(path);
+        if (mat == null)
+        {
+            mat = new Material(Shader.Find("Custom/SilhouetteOutline"));
+            AssetDatabase.CreateAsset(mat, path);
+        }
+        mat.SetFloat("_Width", MicOutlineWidth);
+        mat.SetColor("_BaseColor", new Color(1f, 0.75f, 0.2f));
+        return mat;
+    }
+
+    // A glow outline around `parts`, riding on `joint` so it turns with it. Off until hovered.
+    static Renderer AddMicOutline(Transform joint, Transform parts, string name, Material mat)
+    {
+        GameObject go = new GameObject(name);
+        go.transform.SetParent(joint, false);
+        go.AddComponent<MeshFilter>().sharedMesh = SaveMeshAsset("Mic" + name, BuildSmoothedCopy(joint, parts));
+        MeshRenderer mr = go.AddComponent<MeshRenderer>();
+        mr.sharedMaterial = mat;
+        mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        mr.enabled = false;
+        return mr;
     }
 
     static Transform NewMicPart(Transform parent, string name, Vector3 localPos)
@@ -2096,7 +2133,7 @@ public static class IP2aSceneBuilder
     // Unity.exe -batchmode -quit -projectPath <project> -executeMethod IP2aSceneBuilder.BuildFromCommandLine
     public static void BuildFromCommandLine()
     {
-        EditorSceneManager.OpenScene("Assets/Scenes/IP2a.unity", OpenSceneMode.Single);
+        EditorSceneManager.OpenScene("Assets/Scenes/IP2b.unity", OpenSceneMode.Single);
         Build();
         LogDuplicateSiblings();
     }

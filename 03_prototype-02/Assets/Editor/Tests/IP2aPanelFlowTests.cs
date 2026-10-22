@@ -8,7 +8,7 @@ using UnityEngine.TestTools;
 using UnityEngine.XR.Interaction.Toolkit;
 using UnityEngine.XR.Interaction.Toolkit.Interactables;
 
-// Play-mode smoke test of the clap -> note creation panel flow in IP2a.unity.
+// Play-mode smoke test of the clap -> note creation panel flow in IP2b.unity.
 // Run from Window > General > Test Runner > EditMode, or headless with
 // Unity.exe -batchmode -projectPath <project> -runTests -testPlatform EditMode
 //
@@ -16,7 +16,7 @@ using UnityEngine.XR.Interaction.Toolkit.Interactables;
 // grip, poke or Editor mouse click all end up doing (see XRButtonPressRouter).
 public class IP2aPanelFlowTests
 {
-    const string ScenePath = "Assets/Scenes/IP2a.unity";
+    const string ScenePath = "Assets/Scenes/IP2b.unity";
 
     ClapGestureDetector clap;
     NoteCreationPanel panel;

@@ -23,7 +23,7 @@ using UnityEngine.XR.Interaction.Toolkit.UI;
 // reloads the domain and the lambda's capture object comes back null.
 public class IP2aWhiteboardTests
 {
-    const string ScenePath = "Assets/Scenes/IP2a.unity";
+    const string ScenePath = "Assets/Scenes/IP2b.unity";
 
     NoteCreationPanel panel;
     XRInteractionManager manager;
@@ -269,8 +269,8 @@ public class IP2aWhiteboardTests
         Assert.IsFalse(tray.outline.enabled, "Outline should stay hidden while the note isn't over the tray.");
         // The held note snaps to the hand, so carry the hand (and the note with it) over the tray.
         hand.transform.position = tray.transform.position + Vector3.up * 0.2f;
-        yield return null;
-        yield return null;
+        float waited = 0f;
+        while (!tray.outline.enabled && waited < 1f) { waited += Time.unscaledDeltaTime; yield return null; }
         Assert.IsTrue(tray.outline.enabled, "Outline should show while a note is over the tray.");
         Assert.IsFalse(bin.outline.enabled, "The bin shouldn't light up over the tray.");
 

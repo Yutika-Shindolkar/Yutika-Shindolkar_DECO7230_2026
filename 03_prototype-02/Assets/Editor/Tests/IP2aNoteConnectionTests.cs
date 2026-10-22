@@ -13,7 +13,7 @@ using UnityEngine.XR.Interaction.Toolkit.Interactors;
 // it, move it, and deselect, which is the same sequence XRI runs for a real grip.
 public class IP2aNoteConnectionTests
 {
-    const string ScenePath = "Assets/Scenes/IP2a.unity";
+    const string ScenePath = "Assets/Scenes/IP2b.unity";
 
     NoteCreationPanel panel;
     XRInteractionManager manager;

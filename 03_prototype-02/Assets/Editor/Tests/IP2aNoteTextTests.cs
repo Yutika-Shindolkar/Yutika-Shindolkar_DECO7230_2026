@@ -9,7 +9,7 @@ using UnityEngine.TestTools;
 // labels use the same letter size as note text.
 public class IP2aNoteTextTests
 {
-    const string ScenePath = "Assets/Scenes/IP2a.unity";
+    const string ScenePath = "Assets/Scenes/IP2b.unity";
 
     const string Paragraph = "This is a longer note, the kind of thing someone writes when they want to capture " +
         "a whole idea at once instead of a single word. It should make the note bigger, not the text smaller.";

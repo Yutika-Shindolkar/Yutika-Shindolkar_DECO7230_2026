@@ -6,7 +6,7 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
-    path: Assets/Scenes/IP2a.unity
+    path: Assets/Scenes/IP2b.unity
     guid: f9e8f4a4fd033c24bbc0799d36e2c132
   - enabled: 0
     path: Assets/Scenes/KnownGood.unity

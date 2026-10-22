@@ -14,7 +14,7 @@ using UnityEngine.XR.Interaction.Toolkit.Interactables;
 [Category("Snapshot")]
 public class IP2aSnapshots
 {
-    const string ScenePath = "Assets/Scenes/IP2a.unity";
+    const string ScenePath = "Assets/Scenes/IP2b.unity";
 
     [UnityTest]
     public IEnumerator NoteCreationPanel()
@@ -185,6 +185,15 @@ public class IP2aSnapshots
         cam.transform.position = focus - panel.transform.forward * 0.45f;
         cam.transform.LookAt(focus);
         Save(cam, "mic_front.png");
+        MicBoomArm boomArm = mount.GetComponent<MicBoomArm>();
+        boomArm.head.mouseHovered = true;
+        yield return null;
+        Save(cam, "mic_glow_head.png");
+        boomArm.head.mouseHovered = false;
+        boomArm.elbow.mouseHovered = true;
+        yield return null;
+        Save(cam, "mic_glow_arm.png");
+        boomArm.elbow.mouseHovered = false;
         cam.transform.position = focus + panel.transform.right * 0.45f - panel.transform.forward * 0.1f;
         cam.transform.LookAt(focus);
         Save(cam, "mic_side.png");

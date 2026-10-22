@@ -14,7 +14,7 @@ using UnityEngine.XR.Interaction.Toolkit.Interactors;
 // other tests fire button events directly, so they can't catch a ray that never hovers.
 public class IP2aControllerRayTests
 {
-    const string ScenePath = "Assets/Scenes/IP2a.unity";
+    const string ScenePath = "Assets/Scenes/IP2b.unity";
 
     [UnityTest]
     public IEnumerator RightControllerRayHoversPanelButtons()
@@ -247,6 +247,9 @@ public class IP2aControllerRayTests
         while (!nearFar.interactablesHovered.Contains(boom.head.handle) && Time.realtimeSinceStartup - t0 < 3f)
             yield return null;
         Assert.IsTrue(nearFar.interactablesHovered.Contains(boom.head.handle), "The ray should hover the mic head.");
+        yield return null;
+        Assert.IsTrue(boom.head.outline.enabled, "The head should glow while the ray is on it.");
+        Assert.IsFalse(boom.elbow.outline.enabled, "The arm should not glow while the ray is on the head.");
 
         nearFar.selectInput.QueueManualState(true, 1f, true, false);
         for (int i = 0; i < 3; i++) yield return null;
@@ -320,6 +323,37 @@ public class IP2aControllerRayTests
 
         yield return new ExitPlayMode();
     }
+    // The mouse path (Editor and development builds): pressing on the arm with the cursor and
+    // dragging turns the elbow within its limit, and the arm glows while the cursor is on it.
+    [UnityTest]
+    public IEnumerator MicElbowFollowsPointerDrag()
+    {
+        EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+        yield return new EnterPlayMode();
+        yield return null;
+
+        NoteCreationPanel panel = Object.FindFirstObjectByType<NoteCreationPanel>(FindObjectsInactive.Include);
+        Object.FindFirstObjectByType<ClapGestureDetector>().onClap.Invoke();
+        yield return null;
+        MicBoomArm boom = panel.mic.GetComponent<MicBoomArm>();
+        Physics.SyncTransforms();
+
+        Transform eye = panel.headTransform;
+        Vector3 armPoint = boom.elbow.handle.transform.position;
+        Ray aim = new Ray(eye.position, armPoint - eye.position);
+        Assert.IsTrue(boom.elbow.handle.colliders[0].Raycast(aim, out _, 20f), "The cursor ray should hit the arm.");
+
+        boom.PointerDown(boom.elbow, aim, false);
+        Vector3 sideways = eye.right * 0.25f;
+        boom.PointerDrag(boom.elbow, new Ray(eye.position, armPoint + sideways - eye.position));
+        float turned = Quaternion.Angle(boom.elbow.restRotation, boom.elbow.pivot.localRotation);
+        Assert.Greater(turned, 5f, "Dragging should tilt the arm.");
+        Assert.LessOrEqual(turned, boom.elbow.maxSwing + 0.5f, "The arm should stop at its limit.");
+        boom.PointerUp(boom.elbow);
+
+        yield return new ExitPlayMode();
+    }
+
     [UnityTest]
     public IEnumerator RightRayStillHoversWithTourMenuOpenAndCanHoverHandles()
     {
